@@ -1,0 +1,121 @@
+---
+title: "20250506_Sandpit"
+author: "Elspeth Sage"
+date: "2025-05-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts")
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/20250506_sandpit"
+figpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Outputs/Figures"
+```
+
+```{r libraries}
+library(lubridate)
+library(leaflet)
+library(dplyr)
+library(sp)
+require(htmlwidgets)
+```
+
+```{r read data}
+dat <- read.csv(paste(datpath,"/CompleteUvA_PTrack_FFH.csv", sep = ""), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+
+#As date time
+dat$Date<- as_datetime(dat$Date)
+dat$datetime_UTC<- as_datetime(dat$datetime_UTC)
+```
+
+```{r quick stats}
+paste('number of individuals: ',length(unique(dat$BTO)))
+paste('start time ',min(dat$datetime_UTC))
+paste('end time ',max(dat$datetime_UTC))
+
+data_group_ind <- dat %>%
+  group_by(BTO) %>%
+  summarize(
+     LoggerID = Logger[1],
+     mindate = min(Date),
+     maxdate = max(Date),
+     npoints = length(Longitude),
+     LoggerType = LoggerType[1],
+     ndays = length(unique(day(Date))),
+     nBreakSegments = length(unique(BreakSegments)),
+     meanTimeForward = mean(TimeForward, na.rm = TRUE),
+     meanTimeLag = mean(TimeLag, na.rm = TRUE)
+  )
+ 
+```
+
+```{r leaflet maps}
+
+lefplot <- dat
+
+# lefplot <- subset(lefplot, Logger %in% unique(lefplot$Logger)[20])
+# lefplot <- subset(lefplot, Logger == 43294)
+lefplot <- subset(lefplot, Logger == unique(lefplot$Logger)[16])
+class_names <- unique(lefplot$Logger)
+
+pal2 <- colorFactor(palette = c("green", "white","blue","pink","red","grey","purple","orange","magenta","yellow"),domain = class_names)
+
+
+# split_data = lapply(unique(lefplot$chunk), function(x) {
+#   df = as.matrix(lefplot[lefplot$chunk == x, c("longitude", "latitude")])
+#   lns = Lines(Line(df), ID = x)
+#   return(lns)
+# })
+
+split_data = lapply(unique(lefplot$Logger), function(x) {
+  df = as.matrix(lefplot[lefplot$Logger == x, c("Longitude", "Latitude")])
+  lns = Lines(Line(df), ID = x)
+  return(lns)
+})
+
+data_lines = SpatialLines(split_data)
+
+lef <- leaflet(lefplot) %>%
+  addTiles() %>%
+  addPolylines(data = data_lines, fillOpacity = 0.6, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ Latitude, lng = ~ Longitude, color = ~pal2(Logger), fillOpacity = 0.6, popup = paste("altitude = ",lefplot$Altitude, " Timestamp = ",lefplot$datetime_UTC," individual =", lefplot$Logger, " Loggertype =", lefplot$LoggerType)) 
+
+lef
+# %>%
+# saveWidget(lef, file=paste(figpath,"/Sandbox1.html", sep = ''))
+
+
+
+```
+
+```{R altitude errors}
+
+ggplot(dat, aes(x=Dist, y=Altitude_agl, size=Satellites, color = factor(Satellites))) +
+  geom_point(alpha = 0.1)+
+  ylim(-2000, 2000)
+
+
+p <- ggplot(dat, aes(group = Satellites, Dist/1000))
+p + geom_boxplot()
+
+p <- ggplot(dat, aes(group = Satellites, Altitude_agl))
+p + geom_boxplot()
+```
+
+```{r play with accel}
+datUvA <- subset(dat, LoggerType == 'UvA')
+
+dataUvA_group_class <- dat %>%
+  group_by(BTO) %>%
+  summarize(
+     LoggerID = Logger[1],
+     mindate = min(Date),
+     maxdate = max(Date),
+     npoints = length(Longitude),
+     LoggerType = LoggerType[1],
+     ndays = length(unique(day(Date))),
+     nBreakSegments = length(unique(BreakSegments)),
+     meanTimeForward = mean(TimeForward, na.rm = TRUE),
+     meanTimeLag = mean(TimeLag, na.rm = TRUE)
+  )
+
+```

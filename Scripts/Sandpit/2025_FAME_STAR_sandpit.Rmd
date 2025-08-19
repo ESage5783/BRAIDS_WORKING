@@ -1,0 +1,220 @@
+---
+title: "2025_FAME_STAR_sandpit"
+author: "Elspeth Sage"
+date: "2025-07-23"
+output: html_document
+---
+
+```{r (1) setup, include=FALSE }
+# Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_FAME_STAR_sandpit/Scripts")
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_FAME_STAR_sandpit/Data/"
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_FAME_STAR_sandpit/Outputs/"
+```
+
+```{r (2) libraries, warning = FALSE, message = FALSE}
+library(lubridate)
+library(leaflet)
+library(leaflet.extras2)
+library(dplyr)
+library(sp)
+library(sf)
+library(stringr)
+require(htmlwidgets)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(devtools)
+```
+
+
+```{r (3) read in GPS data}
+directories <- list.dirs(path = datpath, full.names = TRUE, recursive = TRUE)
+
+dataout <- c()
+
+# read in all the csvs in the directory
+
+  files = list.files(
+    path = directories[2],
+    pattern = ".*csv$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+    
+    # Read in all files in folder and bind into one dataframe
+    data = rbindlist(lapply(files, fread))
+
+data$date_time <- as_datetime(paste(data$Year, '/' ,data$Month, '/', data$Day, '/', data$Hour, ':', data$Minute, ':', data$Second))
+```
+
+```{r (4) Segment into species}
+
+blki <- subset(data, Species ==  "BLKI")
+cogu <- subset(data, Species ==  "COGU")
+razo <- subset(data, Species ==  "RAZO")
+
+```
+
+```{r (5) Maps maps maps: Kittiwakes!, warning = FALSE, }
+ifelse(!dir.exists(paste(savepath, 'Leaflet_maps/kittiwake', sep = '')), dir.create(paste(savepath, '/Leaflet_maps/kittiwake', sep = '')), "Folder exists already")
+
+# Kits
+lefplot <- blki
+class_names <- unique(lefplot$Site)
+pal2 <- colorFactor(palette = c("blue","pink","red","purple","orange","magenta","yellow"),domain = class_names)
+
+
+split_data = lapply(unique(lefplot$Site), function(x) {
+  df = as.matrix(lefplot[lefplot$Site == x, c("Longitude", "Latitude")])
+  lns = Lines(Line(df), ID = x)
+  return(lns)
+})
+
+data_lines = SpatialLines(split_data)
+
+lef <- leaflet(lefplot) %>%
+  addTiles() %>%
+  addPolylines(data = data_lines, fillOpacity = 0.4, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ Latitude, lng = ~ Longitude, color = ~pal2(Site), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$id, " Site =", lefplot$Site)) 
+
+
+saveWidget(lef, file=paste(savepath, 'Leaflet_maps/kittiwake/kittiwake_all',".html", sep = ''))
+
+
+# Make a leaflet per site
+class_names <- c(2010,2011,2012,2013,2014,2015)
+pal2 <- colorFactor(palette = c("blue","red","purple","orange","magenta","yellow"),domain = class_names)
+
+for(i in unique(blki$Site)){
+  lefplot <- subset(blki, Site == i)
+
+
+  split_data = lapply(unique(lefplot$id), function(x) {
+    df = as.matrix(lefplot[lefplot$id == x, c("Longitude", "Latitude")])
+    lns = Lines(Line(df), ID = x)
+    return(lns)
+  })
+  
+  data_lines = SpatialLines(split_data)
+  
+  lef <- leaflet(lefplot) %>%
+    addTiles() %>%
+    addPolylines(data = data_lines, fillOpacity = 0.6, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ Latitude, lng = ~ Longitude, color = ~pal2(Year), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$id)) 
+  
+  lef
+  saveWidget(lef, file=paste(savepath, 'Leaflet_maps/kittiwake/kittiwake_',lefplot$Site[1],".html", sep = ''))
+}
+
+```
+
+```{r (5) Maps maps maps: Razorbill!, warning = FALSE, }
+ifelse(!dir.exists(paste(savepath, 'Leaflet_maps/razorbill', sep = '')), dir.create(paste(savepath, '/Leaflet_maps/razorbill', sep = '')), "Folder exists already")
+
+# Kits
+lefplot <- razo
+class_names <- unique(lefplot$Site)
+
+pal2 <- colorFactor(palette = c("blue","orange","magenta","yellow"),domain = class_names)
+
+
+split_data = lapply(unique(lefplot$Site), function(x) {
+  df = as.matrix(lefplot[lefplot$Site == x, c("Longitude", "Latitude")])
+  lns = Lines(Line(df), ID = x)
+  return(lns)
+})
+
+data_lines = SpatialLines(split_data)
+
+lef <- leaflet(lefplot) %>%
+  addTiles() %>%
+  addPolylines(data = data_lines, fillOpacity = 0.4, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ Latitude, lng = ~ Longitude, color = ~pal2(Site), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$id, " Site =", lefplot$Site)) 
+
+
+saveWidget(lef, file=paste(savepath, 'Leaflet_maps/razorbill/razorbill_all',".html", sep = ''))
+
+
+# Make a leaflet per site
+class_names <- c(2010,2011,2012,2013,2014,2015)
+pal2 <- colorFactor(palette = c("blue","red","purple","orange","magenta","yellow"),domain = class_names)
+
+for(i in unique(razo$Site)){
+  lefplot <- subset(razo, Site == i)
+
+
+  split_data = lapply(unique(lefplot$id), function(x) {
+    df = as.matrix(lefplot[lefplot$id == x, c("Longitude", "Latitude")])
+    lns = Lines(Line(df), ID = x)
+    return(lns)
+  })
+  
+  data_lines = SpatialLines(split_data)
+  
+  lef <- leaflet(lefplot) %>%
+    addTiles() %>%
+    addPolylines(data = data_lines, fillOpacity = 0.6, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ Latitude, lng = ~ Longitude, color = ~pal2(Year), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$id)) 
+  
+  lef
+  saveWidget(lef, file=paste(savepath, 'Leaflet_maps/razorbill/razorbill_',lefplot$Site[1],".html", sep = ''))
+}
+
+```
+
+```{r (5) Maps maps maps: Guillemot!, warning = FALSE, }
+ifelse(!dir.exists(paste(savepath, 'Leaflet_maps/guillemot', sep = '')), dir.create(paste(savepath, '/Leaflet_maps/guillemot', sep = '')), "Folder exists already")
+
+# Kits
+lefplot <- cogu
+class_names <- unique(lefplot$Site)
+
+pal2 <- colorFactor(palette = c("blue","red","purple","orange","magenta","yellow"),domain = class_names)
+
+
+split_data = lapply(unique(lefplot$Site), function(x) {
+  df = as.matrix(lefplot[lefplot$Site == x, c("Longitude", "Latitude")])
+  lns = Lines(Line(df), ID = x)
+  return(lns)
+})
+
+data_lines = SpatialLines(split_data)
+
+lef <- leaflet(lefplot) %>%
+  addTiles() %>%
+  addPolylines(data = data_lines, fillOpacity = 0.4, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ Latitude, lng = ~ Longitude, color = ~pal2(Site), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$id, " Site =", lefplot$Site)) 
+
+
+saveWidget(lef, file=paste(savepath, 'Leaflet_maps/guillemot/guillemot_all',".html", sep = ''))
+
+
+# Make a leaflet per site
+class_names <- c(2010,2011,2012,2013,2014,2015)
+pal2 <- colorFactor(palette = c("blue","red","purple","orange","magenta","yellow"),domain = class_names)
+
+for(i in unique(cogu$Site)){
+  lefplot <- subset(cogu, Site == i)
+
+
+  split_data = lapply(unique(lefplot$id), function(x) {
+    df = as.matrix(lefplot[lefplot$id == x, c("Longitude", "Latitude")])
+    lns = Lines(Line(df), ID = x)
+    return(lns)
+  })
+  
+  data_lines = SpatialLines(split_data)
+  
+  lef <- leaflet(lefplot) %>%
+    addTiles() %>%
+    addPolylines(data = data_lines, fillOpacity = 0.6, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ Latitude, lng = ~ Longitude, color = ~pal2(Year), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$id)) 
+  
+  lef
+  saveWidget(lef, file=paste(savepath, 'Leaflet_maps/guillemot/guillemot_',lefplot$Site[1],".html", sep = ''))
+
+}
+
+``` 

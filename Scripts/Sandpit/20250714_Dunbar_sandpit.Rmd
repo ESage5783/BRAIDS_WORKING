@@ -1,0 +1,507 @@
+---
+title: "20250714_Dunbar_Explore"
+author: "Elspeth Sage"
+date: "2025-07-14"
+output: html_document
+---
+
+
+```{r (1) setup, include=FALSE }
+# Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING")
+scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/Sandpit"
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_unprocessed/DUN_2025/DUN_Sandpit_unprocessed"
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Outputs/Sandpit_outputs/20250714_Dunbar_Sandpit"
+
+
+# Create directories for outputs if not already existing
+# ifelse(!dir.exists(paste(savepath, 'Figures', sep = '')), dir.create(paste(savepath, '/Figures', sep = '')), "Folder exists already")
+# ifelse(!dir.exists(paste(savepath, 'OutputData', sep = '')), dir.create(paste(savepath, '/OutputData', sep = '')), "Folder exists already")
+```
+
+```{r (2) libraries, warning = FALSE, message = FALSE}
+library(lubridate)
+library(leaflet)
+library(leaflet.extras2)
+library(dplyr)
+library(sp)
+library(sf)
+library(stringr)
+require(htmlwidgets)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(devtools)
+
+# Don't have to run devtools but was planning to have a play with it!
+# devtools::install_github('BritishTrustForOrnithology/MoveRakeR', build_vignettes = TRUE)
+```
+
+```{r (3) obtain folder info, warning = FALSE, message = FALSE}
+# Retrieving folernames logger names, base station names from data path
+foldernames <- list.dirs(path = datpath, full.names = FALSE, recursive = TRUE)
+loggernames <- str_split(foldernames, 'Tag', simplify= TRUE)
+# Format of loggernames is weird, tidy and retrieve loggers vs basestations separately
+BSnames <- loggernames[c(2,3),1]
+loggernames <- unique(loggernames[c(7:57),2])
+directories <- list.dirs(path = datpath, full.names = TRUE, recursive = TRUE)
+directoriesTags <- directories[which(str_detect(directories, 'Tag') == TRUE)]
+directoriesTagsID <- str_sub(directoriesTags, -5, -1)
+```
+
+```{r (4) reading GPS data and getting in suitable format, warning = FALSE, message = FALSE}
+# Create empty dataframe
+dataout <- data.frame(matrix(nrow = 0, ncol = 14)) 
+
+# Select which directories to run through - here i've chosen all non basestation directories
+directoriesN <- directoriesTags
+foldersN <- foldernames
+
+# Run through every directory 
+for(n in 1:length(directoriesN)){
+  
+  #Identify folder with loggername
+  # folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
+  
+  # list all .pos file types in that folder
+  files = list.files(
+    path = directoriesN[n],
+    pattern = ".*pos$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  # Runs if there are .pos files in the folder
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    data = rbindlist(lapply(files, fread))
+    # Some of the data has an extra column - filling this in
+    if(length(data[1,])==14){
+      data$ProParam <- rep(NA, nrow(data))
+    }
+    # Name columns and list logger name as variable
+    colnames(data) <- c('Day','Month','Year','Hour','Minute','Second','Second_of_day','Satellites','Lat','Long','Altitude_GPS','Clock_offset','Accuracy','Battery','ProParam')
+    
+    filenameN <- str_split(directoriesN[n], 'Tag', simplify = TRUE)[2]
+    data$Tag_ID <- rep(filenameN, nrow(data))
+    
+    data$folder <- rep(foldersN[n], nrow(data))
+    #Create single data output for all 
+    dataout <- rbind(dataout, data)
+  }
+}
+
+GPS <- dataout
+
+# Remove random extra Parameter 
+# GPS <- GPS %>% dplyr::select(c(1:14,16))
+
+GPS$Site <- rep('DUN', nrow(GPS))
+GPS$Species <- rep('KITTI', nrow(GPS))
+
+GPS <- GPS[order(Tag_ID, Year, Month, Day, Hour, Second),]
+
+GPS$dup <- duplicated(GPS )
+```
+
+```{R filtering}
+
+    # Make datetimes
+    data$date_time <- as_datetime(paste(data$Year, '/' ,data$Month, '/', data$Day, '/', data$Hour, ':', data$Minute, ':', data$Second))
+
+# remove now defunct individual date time objects
+GPS <- GPS %>% dplyr::select(7:18)
+
+# Summaries
+SummGPS <- GPS %>% group_by(tagID) %>% dplyr::summarise(n = length(latitude), start_time = min(date_time), end_time = max(date_time), ndays = length(unique(day(date_time))), nfolders = length(unique(folder)))
+# Remove bonkers latitude - lots of zeros
+GPSWeird <- GPS %>% filter(latitude < 30)
+GPSFilt  <- GPS %>% filter(latitude > 30)
+#Remove duplciate rows
+GPSFilt  <- subset(GPSFilt , select = -c(folder))
+GPSFilt$dup <- duplicated(GPSFilt )
+GPSFilt <- subset(GPSFilt , dup == FALSE)
+
+
+# So now we have one dataframe with all the GPS data in, from both loggers and basestations, where filename tells us which file they came from
+```
+
+```{r (6) read in all pressure, warning = FALSE, message = FALSE}
+# Similar process to reading in GPS data
+# Opening logger pressure data:
+LGpress <- data.frame()
+# Run through every directory 
+directoriesN <- directoriesTags
+
+for(n in 1:length(directoriesN)){
+  
+  #Identify folder with loggername
+  # folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
+  
+  # list all .pos file types in that folder
+  files = list.files(
+    path = directoriesN[n],
+    pattern = ".*press.txt$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    dataN = rbindlist(lapply(files, fread))
+
+    colnames(dataN) <- c('year','month','day','hour','minute','second','temperature','pressure','height_calib')
+
+    # # Include logger name and filename as columns - doing this twice to match with basestation data which includes loggername whereas loggername doesnt, 
+    # # this means we can do a matching excersise to find duplciates later
+   filenameN <- str_split(directoriesN[n], 'Tag', simplify = TRUE)[2]
+    dataN$tagID <- rep(filenameN, nrow(dataN))
+    # 
+    LGpress <- rbind(LGpress, dataN)
+  }
+  
+}
+
+press <- LGpress
+press$date_time <- as_datetime(paste(press$year, '/' ,press$month, '/', press$day, '/', press$hour, ':', press$minute, ':', press$second))
+press <- press %>% sort_by(press$tagID, press$date_time)
+
+# Look for data rows that are duplciated across logger files
+press$dup <- duplicated(press[,1:10])
+pressFilt <- subset(press, dup == FALSE)
+
+# Remove highly anomolous pressures: 
+pressFilt <- subset(pressFilt, pressure < 9000)
+
+SummPress <- pressFilt %>% group_by(tagID) %>% summarise(
+  n = length(tagID),
+  mintime = min(date_time),
+  maxtime= max(date_time),
+  nrefs = length(unique(tagID))
+)
+``` 
+
+```{R read in accel data, warning = FALSE, message = FALSE}
+Accel <- data.frame()
+# Run through every directory 
+directoriesN <- directoriesTags
+
+for(n in 1:length(directoriesN)){
+  
+  #Identify folder with loggername
+  # folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
+  
+  # list all .pos file types in that folder
+  files = list.files(
+    path = directoriesN[n],
+    pattern = ".*Accel.txt$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    dataN = rbindlist(lapply(files, fread))
+
+    colnames(dataN) <- c('year','month','day','hour','minute','second','xacc','yacc','zacc', '3Dacc')
+    
+    
+
+    # # Include logger name and filename as columns - doing this twice to match with basestation data which includes loggername whereas loggername doesnt, 
+    # # this means we can do a matching excersise to find duplciates later
+   filenameN <- str_split(directoriesN[n], 'Tag', simplify = TRUE)[2]
+    dataN$tagID <- rep(filenameN, nrow(dataN))
+    # 
+    Accel <- rbind(Accel, dataN)
+  }
+  
+}
+
+Accel$date_time <- as_datetime(paste(Accel$year, '/' ,Accel$month, '/', Accel$day, '/', Accel$hour, ':', Accel$minute, ':', Accel$second))
+
+# Look for data rows that are duplciated across logger files
+Accel$dup <- duplicated(Accel[,1:12])
+Accel <- subset(Accel, dup == FALSE)
+
+# Remove data from prior to attachment
+Accel <- filter(Accel, month(date_time) > 6)
+
+SummAccel <- Accel %>% group_by(tagID) %>% summarise(
+  n = length(tagID),
+  mintime = min(date_time),
+  maxtime= max(date_time),
+  nrefs = length(unique(tagID))
+)
+```
+
+PLOTS
+```{r just making exploratory maps}
+ifelse(!dir.exists(paste(savepath, 'Leaflet_maps', sep = '')), dir.create(paste(savepath, '/Leaflet_maps', sep = '')), "Folder exists already")
+
+
+# Lef map of all
+lefplot <- GPSFilt
+# lefplot <- subset(lefplot, Logger == unique(lefplot$Logger)[16])
+class_names <- unique(lefplot$tagID)
+
+pal2 <- colorFactor(palette = c("green", "white","blue","pink","red","grey","purple","orange","magenta","yellow", "navy","black","violet"),domain = class_names)
+
+split_data = lapply(unique(lefplot$tagID), function(x) {
+  df = as.matrix(lefplot[lefplot$tagID == x, c("longitude", "latitude")])
+  lns = Lines(Line(df), ID = x)
+  return(lns)
+})
+
+data_lines = SpatialLines(split_data)
+
+
+# lefplota <- sf::st_as_sf(leaflet::atlStorms2005[1, ])
+# data$time <- as.POSIXct(
+#   seq.POSIXt(Sys.time() - 1000, Sys.time(), length.out = nrow(data))
+# )
+
+lef <- leaflet(lefplot) %>%
+  addTiles() %>%
+  addPolylines(data = data_lines, fillOpacity = 0.6, color = "gray") %>%
+  addCircles(data = lefplot, lat = ~ latitude, lng = ~ longitude, color = ~pal2(tagID), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID))
+
+
+lef
+saveWidget(lef, file=paste(savepath, 'Leaflet_maps/TEST',".html", sep = ''))
+
+  
+  
+# Save lef map per individual
+for(i in unique(GPSFilt$tagID)){
+  lefplot <- subset(GPSFilt, tagID == i)
+  
+  # lefplot <- subset(lefplot, Logger == unique(lefplot$Logger)[16])
+  class_names <- unique(lefplot$tagID)
+  
+  pal2 <- colorFactor(palette = c("green", "white","blue","pink","red","grey","purple","orange","magenta","yellow"),domain = class_names)
+  
+  # split_data = lapply(unique(lefplot$tagID), function(x) {
+  #   df = as.matrix(lefplot[lefplot$tagID == x, c("longitude", "latitude")])
+  #   lns = Lines(Line(df), ID = x)
+  #   return(lns)
+  # })
+  # 
+  # split_data$time <- lefplot$date_time
+  # data_lines = SpatialLines(split_data)
+  
+  
+  data <- sf::st_as_sf(lefplot, coords = c("latitude", "longitude"), crs = 28992)
+  data <- st_cast(data, "POINT")
+  data$time <- as.POSIXct(
+  seq.POSIXt(Sys.time() - 1000, Sys.time(), length.out = nrow(data))
+  )
+
+  
+  lef <- leaflet(lefplot) %>%
+    addTiles() %>%
+    addPolylines(data = data, fillOpacity = 0.6, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ latitude, lng = ~ longitude, color = ~pal2(tagID), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS)) %>%
+      addTimeslider(data = data,options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE))
+  
+  lef
+  saveWidget(lef, file=paste(savepath, 'Leaflet_maps/lefmap_',lefplot$filename[1],".html", sep = ''))
+}
+
+# Save lef map per individual with time slider
+count <- 1
+for(i in unique(GPSFilt$tagID)){
+  lefplot <- subset(GPSFilt, tagID == i)
+  
+  pal <-  c("green", "darkgreen","blue","navy","red","deeppink4","purple","orange","magenta","yellow")
+  
+data_points <- sp::SpatialPoints(cbind(lefplot$longitude,lefplot$latitude),CRS("+proj=longlat +datum=WGS84"))
+
+data_lines <- sp_line <- as(data_points,"SpatialLines")
+
+data_geom <- st_as_sf(data_points, coords = c("x", "y"), crs = 28992, agr = "constant")
+data <- st_cast(data_geom, "POINT")
+data$time <- as.POSIXct(lefplot$date_time)
+
+lef <- leaflet() %>%
+  addTiles() %>%
+  addPolylines(data = data_lines, fillOpacity = 0.4, color = "gray", weight = 2) %>%
+  addCircles(lng = lefplot$longitude, lat = lefplot$latitude, color = pal[count], fillColor = pal[count], popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS),radius = 1.5, fillOpacity = 0.2, weight = 1, stroke = "FALSE") %>%
+  addTimeslider(data = data, fillOpacity = 0.2, radius  = 5, weight = 1, color = pal[count], fillColor = pal[count],
+                popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS),
+                options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE))
+  
+  lef
+  saveWidget(lef, file=paste(savepath, 'Leaflet_maps/TimeSlider_lefmap_',lefplot$tagID[1],".html", sep = ''))
+  
+  count <- count +1
+}
+``` 
+
+```{R fun plotting pressures}
+# Loop through loggers and their unique days to generate a pressure time series per logger per day
+pressFilt$day <- day(pressFilt$date_time)
+
+Ns <- unique(pressFilt$tagID)
+
+for(i in Ns){
+  dataN <- subset(pressFilt, tagID == i)
+
+    p <- ggplot(dataN)+
+    geom_point(aes(x = date_time, y = pressure), alpha = 0.5, stroke = NA)+
+      theme_bw(base_size = 10)+
+      labs(title = (paste('Flight trial, ', date(dataN$date_time[1]), ' tagID: ', i, sep = '')))+
+      xlab('date_time')
+      ylab('pressure')
+    
+    title <- paste(savepath,'Figures/Pressurefigures/Dunbar_', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.png', sep = '') 
+    ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
+  }
+
+# plot strange tag day bday
+press35853_1 <- filter(pressFilt, tagID == 35853 & pressure < 3000)
+press35853_2 <- filter(pressFilt, tagID == 35853 & pressure >= 3000)
+
+p1 <- ggplot(press35853_1)+
+  geom_point(aes(x = date_time, y = pressure), alpha = 0.5, stroke = NA)+
+  theme_bw(base_size = 10)+
+  labs(title = (paste('Flight trial, ', date(press35853_1$date_time[1]), ' tagID: 35853', sep = '')))+
+  xlab('date_time')
+ylab('pressure')
+
+title <- paste(savepath,'Figures/Pressurefigures/Dunbar_', date(press35853_1$date_time[1]),'_', date(press35853_1$date_time[nrow(press35853_1)]),'_logger_35853i.png', sep = '') 
+ggsave(title,plot = p1, width = 15, height = 6, dpi = 150, units = "in", device='png')
+
+p2 <- ggplot(press35853_2)+
+  geom_point(aes(x = date_time, y = pressure), alpha = 0.5, stroke = NA)+
+  theme_bw(base_size = 10)+
+  labs(title = (paste('Flight trial, ', date(press35853_2$date_time[1]), ' tagID: 35853', sep = '')))+
+  xlab('date_time')
+ylab('pressure')
+
+title <- paste(savepath,'Figures/Pressurefigures/Dunbar_', date(press35853_2$date_time[1]),'_', date(press35853_2$date_time[nrow(press35853_2)]),'_logger_35853ii.png', sep = '') 
+ggsave(title,plot = p2, width = 15, height = 6, dpi = 150, units = "in", device='png')
+
+``` 
+
+```{R fun plotting Accelerometer}
+# Loop through loggers and their unique days to generate a pressure time series per logger per day
+Accel$day <- day(Accel$date_time)
+
+Ns <- unique(Accel$tagID)
+
+for(i in Ns){
+  dataN <- subset(Accel, tagID == i)
+
+    p <- ggplot(dataN)+
+    geom_point(aes(x = date_time, y = zacc, color = "z accel"), alpha = 0.5, stroke = NA, fill = 'black')+
+      geom_point(aes(x = date_time, y = yacc, color = "y accel"), alpha = 0.5, stroke = NA, fill = 'red')+
+      geom_point(aes(x = date_time, y = xacc, color = "x accel"), alpha = 0.5, stroke = NA, fill = 'blue')+
+      theme_bw(base_size = 10)+
+      labs(title = (paste('Flight trial, ', date(dataN$date_time[1]), ' tagID: ', i, sep = '')))+
+      xlab('date_time')
+      ylab('Acceleration [g]')
+    
+    title <- paste(savepath,'Figures/Accelerometerfigures/Dunbar_', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.png', sep = '') 
+    ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
+}
+```
+
+```{R more exploratory plots}
+# plot time intervals
+plotdat <- GPSFilt
+
+ggplot(GPSFilt)+
+  geom_histogram(data = GPSFilt, aes(x = timeinterval_f))+
+  facet_wrap(~tagID, scales = "free")
+
+
+ggplot(GPS)+
+  geom_point(data = GPS, aes(x = date_time, y = latitude))+
+  facet_wrap(~tagID, scales = "free")
+
+ggplot(GPSFilt)+
+  geom_point(data = GPSFilt, aes(x = date_time, y = latitude))+
+  facet_wrap(~tagID, scales = "free")
+  
+
+``` 
+
+
+```{R dygraphs!}
+
+library(dygraphs)
+library(xts)
+
+tempGPS <- subset(GPSFilt, tagID == 35903)
+tempp <- subset(pressFilt, tagID == 35903) %>% dplyr::select(pressure, date_time)
+temp <- subset(Accel, tagID == 35903) %>% dplyr::select(zacc, xacc, yacc, date_time)
+xtsdatAcc <- xts(temp, order.by = temp$date_time, tz="UTC")
+xtsdatPr <- xts(tempp, order.by = tempp$date_time, tz="UTC")
+
+
+startrange <- as_date(min(dydat$date_time))
+endrange <- max(dydat$date_time)
+
+dygraph(Accel$zacc, main = "test") %>% 
+  dyRangeSelector(dateWindow = c(min(Accel), "1960-01-01"))
+
+
+dyAcc <-dygraph(xtsdatAcc, main = "Acceleration",group = "tagID 35903") %>% 
+  dyAxis("y", label = "Acceleration (g)", valueRange = c(-4.2, 4.2)) %>%
+  dyHighlight(highlightSeriesOpts = list(strokeWidth = 3)) %>%
+  dyRangeSelector() %>%
+  dyOptions(axisLineWidth = 0.1, strokePattern = "dashed")
+
+dygraph(xtsdatPr, main = "Pressure", group = "tagID 35903") %>% 
+  dyAxis("y", label = "Pressure (mBar)",) %>%
+  dyHighlight(highlightSeriesOpts = list(strokeWidth = 2)) %>%
+  dyRangeSelector() %>%
+  dyOptions(axisLineWidth = 1)
+
+
+
+saveWidget(dyAcc, file=paste(savepath, '/Figures/Acc_dygraph_',tempGPS$tagID[1],".html", sep = ''))
+
+Ns <- unique(Accel$tagID)
+# Accelerometer figures per individual
+for(i in Ns){
+  dataN <- subset(Accel, tagID == i)
+
+  temp <- subset(dataN, tagID == i) %>% dplyr::select(zacc, xacc, yacc, date_time)
+  xtsdatAcc <- xts(temp, order.by = temp$date_time, tz="UTC")
+  
+  dyAcc <-dygraph(xtsdatAcc, main = paste("tag ID", dataN$tagID[1], sep = " "), group = paste("tag ID", dataN$tagID[1], sep = " ")) %>% 
+  dyAxis("y", label = "Acceleration (g)", valueRange = c(-4.2, 4.2)) %>%
+  dyHighlight(highlightSeriesOpts = list(strokeWidth = 3)) %>%
+  dyRangeSelector() %>%
+  dyOptions(axisLineWidth = 0.1, strokePattern = "dashed")
+    
+    title <- paste(savepath,'Figures/Accelerometerfigures/Dy_Dunbar_Accel', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.png', sep = '') 
+    
+    saveWidget(dyAcc, file=paste(savepath,'Figures/Accelerometerfigures/Dy_Dunbar_Accel_', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.html', sep = ''))
+}
+
+```
+
+
+```{R trying to get leaflet working properly}
+# start with tempGPS - one individual
+data_points <- sp::SpatialPoints(cbind(tempGPS$longitude,tempGPS$latitude),CRS("+proj=longlat +datum=WGS84"))
+
+data_lines <- sp_line <- as(data_points,"SpatialLines")
+
+data_geom <- st_as_sf(data_points, coords = c("x", "y"), crs = 28992, agr = "constant")
+data <- st_cast(data_geom, "POINT")
+data$time <- as.POSIXct(tempGPS$date_time)
+
+lef <- leaflet() %>%
+  addTiles() %>%
+  addPolylines(data = data_lines, fillOpacity = 0.4, color = "gray", weight = 2) %>%
+  addCircles(lng = tempGPS$longitude, lat = tempGPS$latitude, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS),radius = 0.2, fillOpacity = 0.1, weight = 1, stroke = "FALSE") %>%
+  addTimeslider(data = data,fillOpacity = 0.2, radius  = 5, weight = 1, options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE,),fillOpacity = 0.2, radius  = 5, weight = 1)
+
+``` 
+

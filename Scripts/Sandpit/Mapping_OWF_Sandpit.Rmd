@@ -1,0 +1,164 @@
+---
+title: "Mapping_OWF"
+author: "Elspeth Sage"
+date: "2025-07-23"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r (1) setup, include=FALSE }
+# Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_SpringSandpit/Scripts")
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_SpringSandpit/Data"
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_SpringSandpit/Outputs"
+
+OWFdatpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Project_data/OWF_data/"
+# Create directories for outputs if not already existing
+# ifelse(!dir.exists(paste(savepath, 'Figures', sep = '')), dir.create(paste(savepath, '/Figures', sep = '')), "Folder exists already")
+# ifelse(!dir.exists(paste(savepath, 'OutputData', sep = '')), dir.create(paste(savepath, '/OutputData', sep = '')), "Folder exists already")
+```
+
+```{r (2) libraries, warning = FALSE, message = FALSE}
+library(lubridate)
+library(leaflet)
+library(leaflet.extras2)
+library(dplyr)
+library(sp)
+library(sf)
+library(stringr)
+require(htmlwidgets)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(devtools)
+```
+
+```{R (3) read shapefile, warning = FALSE, message = FALSE}
+
+cesowf <- read_sf(paste(OWFdatpath,"CES_OWF/Offshore_Wind_(Crown_Estate_Scotland).shp", sep = ""))
+
+ceowf <- read_sf(paste(OWFdatpath,"CEEWNI_OWF/WindSiteAgreements_EnglandWalesAndNI_TheCrownEstate.shp", sep = ""))
+
+bbowf <- read_sf(paste(OWFdatpath,"BerwickBankOffshoreBoundary_SGMCC-20230510/BER_SiteBoundary_SSE_20220506.shp", sep = ""))
+
+cesowf24 <- read_sf(paste(OWFdatpath,"CrownEstateScotland_Shapefiles_May2024/Offshore_Wind_(Crown_Estate_Scotland).shp", sep = ""))
+
+``` 
+
+```{R (4) plot shapefile, warning = FALSE, message = FALSE}
+# Scotland 2025
+lefdat <- subset(cesowf, Property_C == "Wind Farm")
+lefdat$Project_Ph<- as.factor(lefdat$Project_Ph)
+factpal <- colorFactor(c("yellow", "orange","green","red","blue"), lefdat$Project_Ph)
+
+lef <- leaflet(lefdat) %>%
+  addTiles() %>%
+  addPolygons(color = ~factpal(Project_Ph), weight = 1, smoothFactor = 0.5,
+              opacity = 1.0, fillOpacity = 0.5,
+              popup = paste(" <br> Property: ",lefdat$Property_D,"<br> Tenant: ", lefdat$Tenant_Nam,"<br> Lease type: ",lefdat$Lease_Type," <br> Category: ", lefdat$Property_C," <br> Capacity: ",lefdat$Capacity_M," <br> Phase: ", lefdat$Project_Ph),
+               highlightOptions = highlightOptions(color = "white", weight = 2,bringToFront = TRUE)
+  )
+
+lef
+
+# # England Wales NI
+# lefdat <- ceowf
+# lefdat$Inf_Status- as.factor(lefdat$Inf_Status)
+# factpal <- colorFactor(c("green", "yellow","pink","orange","grey", "red", "blue"), lefdat$Inf_Status)
+# 
+# lef <- leaflet(lefdat) %>%
+#   addTiles() %>%
+#   addPolygons(color = ~factpal(Inf_Status), weight = 1, smoothFactor = 0.5,
+#               opacity = 1.0, fillOpacity = 0.5,
+#               popup = paste(" <br> Property: ",lefdat$Name_Prop,"<br> Tenant: ", lefdat$Name_Ten,"<br> Lease type: ",lefdat$Lease_Stat," <br> leasing round: ", lefdat$Wind_Round," <br> km2: ",lefdat$km2," <br> Phase: ", lefdat$Inf_Status),
+#                highlightOptions = highlightOptions(color = "white", weight = 2,bringToFront = TRUE)
+#   )
+# 
+# lef
+
+
+# Scotland 2024
+lefdat <- cesowf24
+lefdat$Project_Ph<- as.factor(lefdat$Project_Ph)
+factpal <- colorFactor(c("yellow", "orange","green","red","blue"), lefdat$Project_Ph)
+
+lef <- leaflet(lefdat) %>%
+  addTiles() %>%
+  addPolygons(color = ~factpal(Project_Ph), weight = 1, smoothFactor = 0.5,
+              opacity = 1.0, fillOpacity = 0.5,
+              popup = paste(" <br> Property: ",lefdat$Property_D,"<br> Tenant: ", lefdat$Tenant_Nam,"<br> Lease type: ",lefdat$Lease_Type," <br> Category: ", lefdat$Property_C," <br> Capacity: ",lefdat$Capacity_M," <br> Phase: ", lefdat$Project_Ph),
+               highlightOptions = highlightOptions(color = "white", weight = 2,bringToFront = TRUE)
+  )
+
+lef
+
+
+bbowf <- st_cast(bbowf, "MULTIPOLYGON")
+bbowf <- st_transform(bbowf, 4326)
+# Berwick Bank 
+lefdat <- bbowf
+# lefdat$Inf_Status- as.factor(lefdat$Inf_Status)
+# factpal <- colorFactor(c("green", "yellow","pink","orange","grey", "red", "blue"), lefdat$Inf_Status)
+
+lef <- leaflet(lefdat) %>%
+  addTiles() %>%
+  addPolygons(color = "red", weight = 1, smoothFactor = 0.5,
+              opacity = 1.0, fillOpacity = 0.5,
+               highlightOptions = highlightOptions(color = "white", weight = 2,bringToFront = TRUE)
+  )
+
+lef
+
+
+test<- cesowf
+test$geometry[which(test$Property_D == "Berwick Bank Wind Farm")] <- bbowf$geometry
+# Remove Marr bank
+test <- subset(test, Tenant_Nam != 'Marr Bank')
+cesowf <- test
+
+# Scotland
+lefdat <- subset(test, Property_C == "Wind Farm")
+lefdat$Project_Ph<- as.factor(lefdat$Project_Ph)
+factpal <- colorFactor(c("yellow", "orange","green","red","blue"), lefdat$Project_Ph)
+
+lef <- leaflet(lefdat) %>%
+  addTiles() %>%
+  addPolygons(color = ~factpal(Project_Ph), weight = 1, smoothFactor = 0.5,
+              opacity = 1.0, fillOpacity = 0.5,
+              popup = paste(" <br> Property: ",lefdat$Property_D,"<br> Tenant: ", lefdat$Tenant_Nam,"<br> Lease type: ",lefdat$Lease_Type," <br> Category: ", lefdat$Property_C," <br> Capacity: ",lefdat$Capacity_M," <br> Phase: ", lefdat$Project_Ph),
+               highlightOptions = highlightOptions(color = "white", weight = 2,bringToFront = TRUE)
+  )
+
+lef
+```
+
+```{R (4) plot all shapefile, warning = FALSE, message = FALSE}
+
+# Together
+lefdat_1 <- subset(cesowf, Property_C == "Wind Farm")
+lefdat_1$Project_Ph<- as.factor(lefdat_1$Project_Ph)
+factpal_1 <- colorFactor(c("yellow", "orange","green","red","blue"), lefdat_1$Project_Ph)
+
+lefdat_2 <- ceowf
+lefdat_2$Project_Ph<- as.factor(lefdat_2$Inf_Status)
+factpal_2 <- colorFactor(c("green", "yellow","pink","orange","grey", "red", "blue"), lefdat_2$Inf_Status)
+
+
+lef <- leaflet() %>%
+  addTiles() %>%
+  addPolygons(data = lefdat_1, color = ~factpal_1(Project_Ph), weight = 1, smoothFactor = 0.5,
+              opacity = 1.0, fillOpacity = 0.5,
+              popup = paste(" <br> Property: ",lefdat_1$Property_D,"<br> Tenant: ", lefdat_1$Tenant_Nam,"<br> Lease type: ",lefdat_1$Lease_Type," <br> Category: ", lefdat_1$Property_C," <br> Capacity: ",lefdat_1$Capacity_M," <br> Phase: ", lefdat_1$Project_Ph),
+               highlightOptions = highlightOptions(color = "white", weight = 2,bringToFront = TRUE)) %>%
+  addPolygons(data = lefdat_2, color = ~factpal_2(Inf_Status), weight = 1, smoothFactor = 0.5,
+              opacity = 1.0, fillOpacity = 0.5,
+              popup = paste(" <br> Property: ",lefdat_2$Name_Prop,"<br> Tenant: ", lefdat_2$Name_Ten,"<br> Lease type: ",lefdat_2$Lease_Stat," <br> leasing round: ", lefdat_2$Wind_Round," <br> km2: ",lefdat_2$km2," <br> Phase: ", lefdat_2$Inf_Status),
+               highlightOptions = highlightOptions(color = "white", weight = 2,bringToFront = TRUE))
+
+
+ifelse(!dir.exists(paste(OWFdatpath, 'Leaflet_maps', sep = '')), dir.create(paste(OWFdatpath, '/Leaflet_maps', sep = '')), "Folder exists already")
+saveWidget(lef, file=paste(OWFdatpath, 'Leaflet_maps/200250723_OWF',".html", sep = ''))
+
+lef
+```

@@ -1,0 +1,98 @@
+---
+title: "20250819_raw_processing"
+author: "Elspeth Sage"
+date: "2025-08-19"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r (1) setup, include=FALSE }
+# Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Scripts")
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Data/"
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Outputs/"
+
+```
+
+```{r (2) libraries, warning = FALSE, message = FALSE}
+library(lubridate)
+library(dplyr)
+library(sp)
+library(sf)
+library(purrr)
+library(stringr)
+library(data.table)
+```
+
+```{r (3) obtain folder info, warning = FALSE, message = FALSE}
+GPSpath <- paste(datpath, 'Final .pos', sep = '')
+Accelpath <- paste(datpath, 'Accelerometry', sep = '')
+Presspath <- paste(datpath, 'Pressure', sep = '')
+```
+
+
+```{R read directory, warning = FALSE, message = FALSE}
+  files = list.files(
+    path = GPSpath,
+    pattern = ".*pos$",
+    ignore.case = T,
+    full.names = T
+  )
+
+Tag_IDs <- str_split(files, 'Tag', simplify = TRUE)[,2]
+Tag_IDs <- str_split(Tag_IDs, '.pos', simplify = TRUE)[,1]
+
+
+temp <- lapply(files, fread)
+names(temp) <- Tag_IDs
+
+GPS <- map_df(temp, ~as.data.frame(.x), .id="Tag_ID")
+
+colnames(GPS) <- c('Tag_ID', 'Day','Month','Year','Hour','Minute','Second','Second_of_day','Satellites','Lat','Long','Altitude_GPS','Clock_offset','Accuracy','Battery')
+
+GPS$Site <- rep('DUN', nrow(GPS))
+GPS$Species <- rep('KITTI', nrow(GPS))
+
+GPS <- GPS[order(GPS$Tag_ID, GPS$Year, GPS$Month, GPS$Day, GPS$Hour, GPS$Second),]
+
+```
+
+```{R Read and organise metadata}
+MetaData <- fread(paste(datpath, "SAH, DUN_2025_Metadata.csv", sep = ''))
+MetaData <- subset(MetaData, Colony == 'DUN')
+
+names(MetaData) <- make.names(names(MetaData))
+MetaData$ToR <- as_datetime(paste(MetaData$Year, '/' ,MetaData$Month, '/', MetaData$Day, '/', MetaData$Time.of.realease))
+MetaData$ToR_UTC <- MetaData$ToR - hours(1)
+
+```
+
+```{R Cut GPS data by start times}
+GPS$date_time <- as_datetime(paste(GPS$Year, '/' ,GPS$Month, '/', GPS$Day, '/', GPS$Hour, ':', GPS$Minute, ':', GPS$Second))
+
+GPS_out<- c()
+
+for(i in 1:length(unique(GPS$Tag_ID))){
+  MetaData_i <- MetaData[i,]
+  GPS_i <- subset(GPS, Tag_ID == MetaData_i$GPS.tag.ID)
+  GPS_cut <- subset(GPS_i, date_time > MetaData_i$ToR_UTC)
+  GPS_cut$Plot <- rep(MetaData_i$Plot, nrow(GPS_cut))
+  
+  GPS_out <- rbind(GPS_out, GPS_cut)
+
+}
+
+# Remove date_time since not useed in previous files - can be made from data
+GPS_out <- GPS_out[,!(names(GPS_out) %in% 'date_time')]
+
+# Change name orders to match previous
+name_order <- c('Day','Month','Year','Hour','Minute','Second','Second_of_day','Satellites','Lat','Long','Altitude_GPS','Clock_offset','Accuracy','Battery','Tag_ID','Site','Species','Plot')
+GPS_out <- dplyr::select(GPS_out, all_of(name_order))
+```
+
+```{R write to csv}
+write.csv(GPS_out, file = paste(savepath, 'DUN_2025_KITTI_Tracks.csv', sep = ''), row.names=FALSE)
+
+```
+

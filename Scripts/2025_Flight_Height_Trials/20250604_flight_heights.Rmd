@@ -1,0 +1,419 @@
+---
+title: "20250603_flight_heights"
+author: "Elspeth Sage"
+date: "2025-06-03"
+output: html_document
+---
+
+```{r (1) setup, include=FALSE }
+# Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING")
+scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/2025_Flight_Height_Trials"
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_unprocessed/2025_Flight_Height_Trial_data"
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Outputs/2025_Flight_Height_Trial_Outputs"
+
+
+# Create directories for outputs if not already existing
+ifelse(!dir.exists(paste(savepath, 'Figures', sep = '')), dir.create(paste(savepath, '/Figures', sep = '')), "Folder exists already")
+ifelse(!dir.exists(paste(savepath, 'OutputData', sep = '')), dir.create(paste(savepath, '/OutputData', sep = '')), "Folder exists already")
+```
+
+```{r (2) libraries, warning = FALSE, message = FALSE}
+library(lubridate)
+library(leaflet)
+library(dplyr)
+library(sp)
+require(htmlwidgets)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(devtools)
+
+# Don't have to run devtools but was planning to have a play with it!
+devtools::install_github('BritishTrustForOrnithology/MoveRakeR', build_vignettes = TRUE)
+```
+
+```{r (3) obtain folder info, warning = FALSE, message = FALSE}
+# Retrieving folernames logger names, base station names from data path
+foldernames <- list.dirs(path = datpath, full.names = FALSE, recursive = TRUE)
+loggernames <- str_split(foldernames, 'Tag', simplify= TRUE)
+# Format of loggernames is weird, tidy and retrieve loggers vs basestations separately
+BSnames <- loggernames[c(2,3),1]
+loggernames <- loggernames[c(4:32),2]
+directories <- list.dirs(path = datpath, full.names = TRUE, recursive = TRUE)
+```
+
+```{r (4) reading GPS data and getting in suitable format, warning = FALSE, message = FALSE}
+# Create empty dataframe
+dataout <- data.frame(matrix(nrow = 0, ncol = 14)) 
+
+# Running through a loop per folder except petrel tags (which have an extra column)
+for(n in 1:21){
+  
+  #Identify folder with loggername
+  folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
+  
+  # list all .pos file types in that folder
+  files = list.files(
+    path = folder,
+    pattern = ".*pos$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  # Runs if there are .pos files in the folder
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    data = rbindlist(lapply(files, fread))
+    # Name columns and list logger name as variable
+    colnames(data) <- c('day','month','year','hour','minute','second','second_of_day','satellites','latitude','longitude','altitude_GPS','clock_offset','accuracy','battery')
+    # Make datetimes
+    data$date_time <- as_datetime(paste(data$year, '/' ,data$month, '/', data$day, '/', data$hour, ':', data$minute, ':', data$second))
+    #Calculate time interval
+    data$timeinterval_f <- c(0,difftime(data$date_time[-1], data$date_time[-length(data$date_time)], units = "secs"))
+    data$filename <- rep(loggernames[n], nrow(data))
+    #Create single data output for all 
+    dataout <- rbind(dataout, data)
+  }
+}
+
+# Opening basestationdata:
+BSdatout <- data.frame()
+for(n in 1:2){
+  folder <- paste(datpath, BSnames[n], "/", sep = "") 
+  files = list.files(
+    path = folder,
+    pattern = ".*pos$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    data = rbindlist(lapply(files, fread))
+    
+    colnames(data) <- c('day','month','year','hour','minute','second','second_of_day','satellites','latitude','longitude','altitude_GPS','clock_offset','accuracy','battery')
+        # Make datetimes
+    data$date_time <- as_datetime(paste(data$year, '/' ,data$month, '/', data$day, '/', data$hour, ':', data$minute, ':', data$second))
+    
+    #CAlculate time interval
+    data$timeinterval_f <- c(0,difftime(data$date_time[-1], data$date_time[-length(data$date_time)], units = "secs"))
+
+    data$filename <- rep(BSnames[n], nrow(data))
+    
+    BSdatout <- rbind(BSdatout, data)
+  }
+  
+}
+
+# join logger and basesatation dataframes
+GPS <- rbind(dataout, BSdatout)
+
+# remove now defunct individual date time objects
+GPS <- GPS %>% select(7:17)
+
+BSdat <- GPS %>% filter(filename %in% BSnames)
+
+#Check overlap in times across loggers - were many ran at once?
+p <- ggplot(GPS, aes(filename, date_time))
+p + geom_boxplot()
+
+# So now we have one dataframe with all the GPS data in, from both loggers and basestations, where filename tells us which file they came from
+```
+
+
+
+```{r (5) read in meta data and filter GPS by start time}
+
+# Elspeth made a metadata file from the field file information to read in for cutting start and end times
+metadat <- fread(paste(datpath, "BRAIDS_flight_height_metadata_07052025.csv", sep = ''))
+metadat$start_datetime <- as_datetime(paste(metadat$Date, metadat$StartTime, sep = ' '))
+# Deal with NAs
+metadat$start_datetime[which(is.na(metadat$StartTime)==1)] <- NA
+
+GPSFilt <- c()
+# Filter GPS data by start times - problem is that this doesn't include the base station GPS data since we don't know what loggers they belong to
+for(n in 1:nrow(metadat)){
+  metn <- metadat[n,]
+  
+  tempdat <- GPS %>% filter(
+    GPS$filename %in% metn$Tag,
+    day(GPS$date_time) == day(metn$start_datetime),
+    GPS$date_time > metn$start_datetime
+  )
+  
+
+GPSFilt <- rbind(GPSFilt,tempdat)
+} 
+GPSFilt <- rbind(GPSFilt, BSdat)
+
+# Remove bonkers latitude - lots of zeros
+GPSWeird <- GPSFilt %>% filter(latitude < 30)
+GPSFilt <- GPSFilt %>% filter(latitude > 30)
+
+#Check distribution of data agrees with flight height trials doc and when loggers were being trialled - they do! 
+p <- ggplot(GPSFilt, aes(filename, date_time))
+p + geom_violin()
+
+```
+
+
+```{R (5.a) messing around with GPS}
+# Take just the first hour of data
+
+temp2 <- GPS %>% filter(day(date_time) == 7 & hour(date_time) == 10 & minute(date_time) == 0)
+temp2 <- temp2 %>% arrange(date_time)
+
+# assess from GPS, what are the existing gaps?
+ggplot(GPSFilt, aes(timeinterval_f))+
+  geom_histogram(binwidth = 5)+
+  facet_wrap(~filename, scales="free")+
+  xlab('time interval (s)')
+  
+
+```
+
+```{r (6) read in all basestation pressure, warning = FALSE, message = FALSE}
+# Similar process to reading in GPS data
+# Opening logger pressure data:
+LGpress <- data.frame()
+for(n in 1:2){
+  #Identify folder with loggername
+  folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
+  
+  # list all .pos files in that folder
+  files = list.files(
+    path = folder,
+    pattern = "*press.txt$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    dataN = rbindlist(lapply(files, fread))
+    
+    colnames(dataN) <- c('year','month','day','hour','minute','second','temperature','pressure','height_calib')
+    
+    # Include logger name and filename as columns - doing this twice to match with basestation data which includes loggername whereas loggername doesnt, 
+    # this means we can do a matching excersise to find duplciates later
+    dataN$logger <- rep(loggernames[n], nrow(dataN))
+    dataN$filename <- rep(loggernames[n], nrow(dataN))
+    
+    LGpress <- rbind(LGpress, dataN)
+  }
+  
+}
+
+# Opening basestationdata:
+BSpress <- data.frame()
+for(n in 1:2){
+  folder <- paste(datpath, BSnames[n], "/", sep = "") 
+  files = list.files(
+    path = folder,
+    pattern = "*press.txt$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    dataN = rbindlist(lapply(files, fread))
+    
+    colnames(dataN) <- c('year','month','day','hour','minute','second','temperature','pressure','height_calib', 'logger')
+
+    dataN$filename <- rep(BSnames[n], nrow(dataN))
+    
+    BSpress <- rbind(BSpress, dataN)
+  }
+  
+}
+
+# Join together data from loggers and basestations, identify duplicates and remove to make final pressure dataset
+press <- rbind(LGpress, BSpress)
+press$date_time <- as_datetime(paste(press$year, '/' ,press$month, '/', press$day, '/', press$hour, ':', press$minute, ':', press$second))
+
+press <- press %>% sort_by(press$logger, press$date_time)
+
+press_sum <- press %>% group_by(logger) %>% summarise(
+  n = length(logger),
+  mintime = min(date_time),
+  maxtime= max(date_time),
+  nrefs = length(unique(filename))
+)
+
+# Look for data rows that are duplciated across logger files and basestation files
+press$dup <- duplicated(press[,1:10])
+
+press_filt <- subset(press, dup == FALSE)
+
+```
+
+
+```{r (7) generate summary of pressure data by logger and generate a load of pressure figures - per day per logger}
+
+# Summary of pressure data groups by logger and day
+press_summ <- press %>% group_by(logger, day)%>% summarise(
+  n = length(logger),
+  mintime = min(date_time),
+  maxtime = max(date_time),
+)
+
+# Identify loggers that are present in final pressure dataset
+Ns <- unique(press_filt$logger)
+
+# Loop through loggers and their unique days to generate a pressure time series per logger per day
+for(i in Ns){
+  dataN <- subset(press_filt, logger == i)
+  for(z in unique(dataN$day)){
+    dataZ <- subset(dataN, day == z)
+
+    p <- ggplot(dataZ)+
+    geom_point(aes(x = date_time, y = pressure))+
+      theme_bw(base_size = 10)+
+      labs(title = (paste('Flight trial, ', date(dataZ$date_time[1]), ' logger: ', i, sep = '')))+
+      xlab('date_time')+
+      ylab('pressure')
+    
+    title <- paste(savepath,'Figures/FlightTrial_', date(dataZ$date_time[1]), '_logger_', i, '.png', sep = '') 
+    ggsave(title,width = 10, height = 6, dpi = 150, units = "in", device='png')
+  }
+}
+
+
+```
+
+```{r (7.a) testing out where press data came from}
+press_sum_test <- press_filt %>% group_by(logger, date(date_time)) %>% reframe(nfiles = length(unique(filename)), files =  unique(filename))
+
+press_sum_test_2 <- press_filt %>% group_by(logger) %>% summarise(nfiles = length(unique(filename)), files = unique(filename))
+
+
+
+```
+
+
+```{r (8) reading in accel data}
+# Similar process to reading in GPSc and press data
+# Opening logger pressure data:
+LGaccel <- data.frame()
+for(n in 1:2){
+  #Identify folder with loggername
+  folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
+  
+  # list all .pos files in that folder
+  files = list.files(
+    path = folder,
+    pattern = "*Accel.txt$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    dataN = rbindlist(lapply(files, fread))
+    
+    colnames(dataN) <- c('year','month','day','hour','minute','second','temperature','pressure','height_calib')
+    
+    # Include logger name and filename as columns - doing this twice to match with basestation data which includes loggername whereas loggername doesnt, 
+    # this means we can do a matching excersise to find duplciates later
+    dataN$logger <- rep(loggernames[n], nrow(dataN))
+    dataN$filename <- rep(loggernames[n], nrow(dataN))
+    
+    LGpress <- rbind(LGpress, dataN)
+  }
+  
+}
+
+# Opening basestationdata:
+BSpress <- data.frame()
+for(n in 1:2){
+  folder <- paste(datpath, BSnames[n], "/", sep = "") 
+  files = list.files(
+    path = folder,
+    pattern = "*press.txt$",
+    ignore.case = T,
+    full.names = T
+  )
+  
+  if(length(files) > 0) {
+    
+    # Read in all files in folder and bind into one dataframe
+    dataN = rbindlist(lapply(files, fread))
+    
+    colnames(dataN) <- c('year','month','day','hour','minute','second','temperature','pressure','height_calib', 'logger')
+
+    dataN$filename <- rep(BSnames[n], nrow(dataN))
+    
+    BSpress <- rbind(BSpress, dataN)
+  }
+  
+}
+
+# Join together data from loggers and basestations, identify duplicates and remove to make final pressure dataset
+press <- rbind(LGpress, BSpress)
+press$date_time <- as_datetime(paste(press$year, '/' ,press$month, '/', press$day, '/', press$hour, ':', press$minute, ':', press$second))
+
+press <- press %>% sort_by(press$logger, press$date_time)
+
+press_sum <- press %>% group_by(logger) %>% summarise(
+  n = length(logger),
+  mintime = min(date_time),
+  maxtime= max(date_time),
+  nrefs = length(unique(filename))
+)
+
+# Look for data rows that are duplciated across logger files and basestation files
+press$dup <- duplicated(press[,1:10])
+
+press_filt <- subset(press, dup == FALSE)
+
+``` 
+
+
+```{r (8) saving organised data}
+# Write GPS data - currently not doing as GPS has not been matched up!
+# write.dat(GPS, paste(savepath, 'Data_out/2025_FlightHeightTrials_GPS.dat'))
+
+# Write pressure data
+write.csv(press_filt, file = paste(savepath, 'OutputData/2025_FlightHeightTrials_Pressure.dat', sep = ''))
+
+
+``` 
+
+
+```{r just making exploratory maps}
+# This is Elspeth just piddling about don't worry about it
+
+# split by day
+dat7 <- BSdatout %>% filter(day(BSdatout$date_time) == 7)
+# dat8 <- datFilt %>% filter(day(datFilt$date_time) == 8)
+
+lefplot <- BSdatout
+
+# lefplot <- subset(lefplot, Logger == unique(lefplot$Logger)[16])
+class_names <- unique(lefplot$filename)
+
+pal2 <- colorFactor(palette = c("green", "white","blue","pink","red","grey","purple","orange","magenta","yellow"),domain = class_names)
+
+split_data = lapply(unique(lefplot$filename), function(x) {
+  df = as.matrix(lefplot[lefplot$filename == x, c("longitude", "latitude")])
+  lns = Lines(Line(df), ID = x)
+  return(lns)
+})
+
+data_lines = SpatialLines(split_data)
+
+lef <- leaflet(lefplot) %>%
+  addTiles() %>%
+  addPolylines(data = data_lines, fillOpacity = 0.6, color = "gray") %>%
+    addCircles(data = lefplot, lat = ~ latitude, lng = ~ longitude, color = ~pal2(filename), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$filename)) 
+
+lef
+
+``` 

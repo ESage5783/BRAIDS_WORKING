@@ -1,0 +1,47 @@
+---
+title: "20250819_raw_processing_gap_checker"
+author: "Elspeth Sage"
+date: "2025-08-19"
+output: html_document
+---
+
+```{r (1) setup, include=FALSE }
+# Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Scripts")
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Data/"
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Outputs/"
+
+```
+
+```{r (2) libraries, warning = FALSE, message = FALSE}
+library(lubridate)
+library(dplyr)
+library(sp)
+library(sf)
+library(purrr)
+```
+
+```{r read in data}
+GPS <- read.csv(paste(savepath, 'DUN_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+
+```
+
+```{r create date_times and intervals}
+GPS$date_time <- as_datetime(paste(GPS$Year, '/' ,GPS$Month, '/', GPS$Day, '/', GPS$Hour, ':', GPS$Minute, ':', GPS$Second))
+
+GPS_out <- c()
+for(i in 1:length(unique(GPS$Tag_ID))){
+  GPS_i <- subset(GPS, Tag_ID %in% unique(GPS$Tag_ID)[i])
+  GPS_i <- GPS_i[order(GPS_i$date_time),]
+  GPS_i$timeinterval_f <- c(NA,difftime(GPS_i$date_time[-1], GPS_i$date_time[-length(GPS_i$date_time)], units = "secs"))
+  
+  GPS_out <- rbind(GPS_out, GPS_i)
+}
+
+GPS <- GPS_out 
+```
+
+```{r interrogate time gaps}
+GPSsumm <- GPS %>% group_by(Tag_ID) %>% summarise(minInterval = min(timeinterval_f, na.rm = TRUE), maxInterval = max(timeinterval_f, na.rm = TRUE), medianInterval = median(timeinterval_f, na.rm = TRUE))
+
+```
