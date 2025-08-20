@@ -7,9 +7,12 @@ output: html_document
 
 ```{r (1) setup, include=FALSE }
 # Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
-setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Scripts")
-datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Data/"
-savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Outputs/"
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING")
+scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/Preprocessing/"
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_processed/Kittiwake/"
+
+# Savepath for where you want processed tracks to live
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Outputs/Preprocessing_outputs"
 
 ```
 
@@ -19,10 +22,12 @@ library(dplyr)
 library(sp)
 library(sf)
 library(purrr)
+library(ggplot2)
+library(cowplot)
 ```
 
 ```{r read in data}
-GPS <- read.csv(paste(savepath, 'DUN_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+GPS <- read.csv(paste(datpath, 'SAH_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
 
 ```
 
@@ -50,6 +55,22 @@ GPSsumm <- GPS %>% group_by(Tag_ID) %>% summarise(nfixes = length(date_time),
 ```
 
 ```{r plot some time gaps?}
-temp <- subset 
+# Create directories for outputs if not already existing
 
+for(i in 1:length(unique(GPS$Tag_ID))){
+
+  temp <- subset(GPS, Tag_ID == unique(GPS$Tag_ID)[i])
+p1 <- ggplot(temp, aes(x = date_time, y = Battery))+
+  geom_line(color = 'red')+
+  ylim(3.6,4.25)
+p2 <- ggplot(temp, aes(x = date_time, y = timeinterval_f))+
+  geom_point(color = 'blue')
+
+p <- plot_grid(p1, p2, labels = c('A', 'B'), label_size = 12)
+
+    title <- paste(savepath,'/Figures/battery_timegaps_2025/SAH_', date(temp$date_time[1]),'_', date(temp$date_time[nrow(temp)]),'_logger_', unique(GPS$Tag_ID)[i], '.png', sep = '') 
+    ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
+
+}
+                       
 ```
