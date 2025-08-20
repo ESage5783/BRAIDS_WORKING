@@ -7,14 +7,6 @@ output:
   html_document: default
 ---
 
-```{r (1) setup, include=FALSE }
-# Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
-setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Scripts")
-datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Data/"
-savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_Dunbar_Explore/Outputs/"
-
-```
-
 ```{r (2) libraries, warning = FALSE, message = FALSE}
 library(lubridate)
 library(dplyr)
@@ -25,10 +17,21 @@ library(stringr)
 library(data.table)
 ```
 
+```{r (1) setup, include=FALSE }
+# Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING")
+scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/Preprocessing/"
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_unprocessed/SAH_2025/"
+
+# Savepath for where you want processed tracks to live
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_processed/Kittiwake/"
+
+```
+
+
 ```{r (3) obtain folder info, warning = FALSE, message = FALSE}
+# Could need changing depending on where data lives within dat path
 GPSpath <- paste(datpath, 'Final .pos', sep = '')
-Accelpath <- paste(datpath, 'Accelerometry', sep = '')
-Presspath <- paste(datpath, 'Pressure', sep = '')
 ```
 
 
@@ -59,12 +62,15 @@ GPS <- GPS[order(GPS$Tag_ID, GPS$Year, GPS$Month, GPS$Day, GPS$Hour, GPS$Second)
 ```
 
 ```{R Read and organise metadata}
+# Will need adjusting depending on metadata 
 MetaData <- fread(paste(datpath, "SAH, DUN_2025_Metadata.csv", sep = ''))
-MetaData <- subset(MetaData, Colony == 'DUN')
+MetaData <- subset(MetaData, Colony == 'SAH')
 
 names(MetaData) <- make.names(names(MetaData))
 MetaData$ToR <- as_datetime(paste(MetaData$Year, '/' ,MetaData$Month, '/', MetaData$Day, '/', MetaData$Time.of.realease))
 MetaData$ToR_UTC <- MetaData$ToR - hours(1)
+
+MetaData <- subset(MetaData, is.na(GPS.tag.ID)==0)
 
 ```
 
@@ -92,7 +98,15 @@ GPS_out <- dplyr::select(GPS_out, all_of(name_order))
 ```
 
 ```{R write to csv}
-write.csv(GPS_out, file = paste(savepath, 'DUN_2025_KITTI_Tracks.csv', sep = ''), row.names=FALSE)
+# Save raw data 
+write.csv(GPS_out, file = paste(savepath, 'SAH_2025_KITTI_Tracks.csv', sep = ''), row.names=FALSE)
 
+```
+
+```{R test whether filtering is making sense with release times, etc}
+GPSsumm <- GPS %>% group_by(Tag_ID) %>% summarise(nfixes = length(Tag_ID), start_day = min(Day), start_month = min(Month))
+GPS_out_summ <- GPS_out %>% group_by(Tag_ID) %>% summarise(nfixes_out = length(Tag_ID), start_day_out = min(Day), start_month_out = min(Month), plot = Plot[1])
+
+test <- merge(GPSsumm, GPS_out_summ)
 ```
 

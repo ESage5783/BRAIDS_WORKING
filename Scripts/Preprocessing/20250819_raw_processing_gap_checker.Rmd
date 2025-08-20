@@ -42,6 +42,14 @@ GPS <- GPS_out
 ```
 
 ```{r interrogate time gaps}
-GPSsumm <- GPS %>% group_by(Tag_ID) %>% summarise(minInterval = min(timeinterval_f, na.rm = TRUE), maxInterval = max(timeinterval_f, na.rm = TRUE), medianInterval = median(timeinterval_f, na.rm = TRUE))
+GPSsumm <- GPS %>% group_by(Tag_ID) %>% summarise(nfixes = length(date_time), 
+                                                  start_time = min(date_time), 
+                                                  end_time = max(date_time), 
+                                                  minInterval = min(timeinterval_f, na.rm = TRUE), maxInterval = max(timeinterval_f, na.rm = TRUE), medianInterval = median(timeinterval_f, na.rm = TRUE))
+
+```
+
+```{r plot some time gaps?}
+temp <- subset 
 
 ```
