@@ -3,17 +3,18 @@ title: "Mapping_OWF"
 author: "Elspeth Sage"
 date: "2025-07-23"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r (1) setup, include=FALSE }
 # Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
-setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_SpringSandpit/Scripts")
-datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_SpringSandpit/Data"
-savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/2025_SpringSandpit/Outputs"
+setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING")
+scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/Sandpit"
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/OWF_data/"
+savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Outputs/Sandpit_outputs/OWF/"
 
-OWFdatpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Project_data/OWF_data/"
+OWFdatpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/OWF_data/"
 # Create directories for outputs if not already existing
 # ifelse(!dir.exists(paste(savepath, 'Figures', sep = '')), dir.create(paste(savepath, '/Figures', sep = '')), "Folder exists already")
 # ifelse(!dir.exists(paste(savepath, 'OutputData', sep = '')), dir.create(paste(savepath, '/OutputData', sep = '')), "Folder exists already")
@@ -157,8 +158,9 @@ lef <- leaflet() %>%
                highlightOptions = highlightOptions(color = "white", weight = 2,bringToFront = TRUE))
 
 
-ifelse(!dir.exists(paste(OWFdatpath, 'Leaflet_maps', sep = '')), dir.create(paste(OWFdatpath, '/Leaflet_maps', sep = '')), "Folder exists already")
-saveWidget(lef, file=paste(OWFdatpath, 'Leaflet_maps/200250723_OWF',".html", sep = ''))
+ifelse(!dir.exists(paste(savepath, 'Leaflet_maps', sep = '')), dir.create(paste(savepath, '/Leaflet_maps', sep = '')), "Folder exists already")
+
+saveWidget(lef, file=paste(savepath, 'Leaflet_maps/200250723_OWF',".html", sep = ''))
 
 lef
 ```

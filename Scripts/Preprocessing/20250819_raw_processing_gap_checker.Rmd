@@ -2,7 +2,9 @@
 title: "20250819_raw_processing_gap_checker"
 author: "Elspeth Sage"
 date: "2025-08-19"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r (1) setup, include=FALSE }
@@ -69,8 +71,9 @@ p2 <- ggplot(temp, aes(x = date_time, y = timeinterval_f))+
 p <- plot_grid(p1, p2, labels = c('A', 'B'), label_size = 12)
 
     title <- paste(savepath,'/Figures/battery_timegaps_2025/SAH_', date(temp$date_time[1]),'_', date(temp$date_time[nrow(temp)]),'_logger_', unique(GPS$Tag_ID)[i], '.png', sep = '') 
-    ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
+    # ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
 
+    print(p)
 }
                        
 ```
