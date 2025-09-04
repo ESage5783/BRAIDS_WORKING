@@ -1,5 +1,5 @@
 ---
-title: "20250819_raw_processing"
+title: "20250819_PathTrack_raw_processing"
 author: "Elspeth Sage"
 date: "2025-08-19"
 output:
@@ -15,13 +15,16 @@ library(sf)
 library(purrr)
 library(stringr)
 library(data.table)
+library(tidytable)
 ```
 
 ```{r (1) Settings}
 # Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
 setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING")
 
-SITE <- 'DUN'
+# Site options: DUN, SAH, FHH
+SITE <- 'FHH'
+# Species options: KITTI, COGU, RAZO
 SPECIES <- 'KITTI'
 YEAR <- 2025
 
@@ -30,8 +33,8 @@ YEAR <- 2025
 ```{R set paths}
 
 scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/Preprocessing/"
-datpath <- paste("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_unprocessed/", SITE, "_", YEAR, "/", sep = '')
-Metapath <- paste(datpath, "SAH, DUN_2025_Metadata.csv", sep = '')
+datpath <- paste("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_unprocessed/", YEAR, "_", SPECIES, "_", SITE, "/", sep = '')
+Metapath <- paste(datpath, SITE, "_", YEAR, "_Metadata.csv", sep = '')
 # Savepath for where you want processed tracks to live
 savepath <-  paste("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_processed/", SPECIES, "/", sep = '')
 
@@ -67,11 +70,11 @@ colnames(GPS) <- c('Tag_ID', 'Day','Month','Year','Hour','Minute','Second','Seco
 GPS$Site <- rep(SITE, nrow(GPS))
 GPS$Species <- rep(SPECIES, nrow(GPS))
 
-
-
 ```
 
 ```{R additional pathtrackdata - DUNBAR 2025 ONLY}
+
+GPS <- subset(GPS, Tag_ID != 35894)
 GPS$Tag_ID[which(GPS$Tag_ID == '35894-COMBINED')] <- rep(35894, length(GPS$Tag_ID[which(GPS$Tag_ID == '35894-COMBINED')]))
 
 ```
@@ -110,7 +113,7 @@ for(i in 1:length(unique(GPS$Tag_ID))){
 }
 
 # Remove date_time since not useed in previous files - can be made from data
-GPS_out <- GPS_out[,!(names(GPS_out) %in% 'date_time')]
+GPS_out<- subset(GPS_out, select = -c(date_time))
 
 # Change name orders to match previous
 name_order <- c('Day','Month','Year','Hour','Minute','Second','Second_of_day','Satellites','Lat','Long','Altitude_GPS','Clock_offset','Accuracy','Battery','Tag_ID','Site','Species','Plot')
@@ -123,34 +126,4 @@ write.csv(GPS_out, file = paste(savepath, SITE, '_', YEAR, '_', SPECIES,'_Tracks
 
 ```
 
-```{R test whether filtering is making sense with release times, etc}
-GPSsumm <- GPS %>% group_by(Tag_ID) %>% summarise(nfixes = length(Tag_ID), start_day = min(Day), start_month = min(Month))
-GPS_out_summ <- GPS_out %>% group_by(Tag_ID) %>% summarise(nfixes_out = length(Tag_ID), start_day_out = min(Day), start_month_out = min(Month), plot = Plot[1])
-
-test <- merge(GPSsumm, GPS_out_summ)
-
-library(leaflet)
-library(leaflet.extras2)
-  lefplot <- subset(GPS, Tag_ID == 35894 & Lat > 0)
-  
-  pal <-  c("green", "darkgreen","blue","navy","red","deeppink4","purple","orange","magenta","yellow")
-  
-data_points <- sp::SpatialPoints(cbind(lefplot$Long,lefplot$Lat),CRS("+proj=longlat +datum=WGS84"))
-
-data_lines <- sp_line <- as(data_points,"SpatialLines")
-
-data_geom <- st_as_sf(data_points, coords = c("x", "y"), crs = 28992, agr = "constant")
-data <- st_cast(data_geom, "POINT")
-data$time <- as.POSIXct(lefplot$date_time)
-
-lef <- leaflet() %>%
-  addTiles() %>%
-  addPolylines(data = data_lines, fillOpacity = 0.4, color = "gray", weight = 2) %>%
-  addCircles(lng = lefplot$Long, lat = lefplot$Lat, color = pal[1], fillColor = pal[1], popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$Tag_ID, " GPS alt =", lefplot$Altitude_GPS),radius = 1.5, fillOpacity = 0.2, weight = 1, stroke = "FALSE") %>%
-  addTimeslider(data = data, fillOpacity = 0.2, radius  = 5, weight = 1, color = pal[1], fillColor = pal[1],
-                popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$Tag_ID, " GPS alt =", lefplot$Altitude_GPS),
-                options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE))
-  
-  lef
-```
 

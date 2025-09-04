@@ -11,7 +11,7 @@ output:
 # Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
 setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING")
 scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/Preprocessing/"
-datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_processed/Kittiwake/"
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_processed/KITTI/"
 
 # Savepath for where you want processed tracks to live
 savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Outputs/Preprocessing_outputs"
@@ -29,7 +29,7 @@ library(cowplot)
 ```
 
 ```{r read in data}
-GPS <- read.csv(paste(datpath, 'SAH_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+GPS <- read.csv(paste(datpath, 'FHH_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
 
 ```
 
@@ -70,8 +70,8 @@ p2 <- ggplot(temp, aes(x = date_time, y = timeinterval_f))+
 
 p <- plot_grid(p1, p2, labels = c('A', 'B'), label_size = 12)
 
-    title <- paste(savepath,'/Figures/battery_timegaps_2025/SAH_', date(temp$date_time[1]),'_', date(temp$date_time[nrow(temp)]),'_logger_', unique(GPS$Tag_ID)[i], '.png', sep = '') 
-    # ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
+    title <- paste(savepath,'/Figures/battery_timegaps_2025_3/SAH_', date(temp$date_time[1]),'_', date(temp$date_time[nrow(temp)]),'_logger_', unique(GPS$Tag_ID)[i], '.png', sep = '') 
+    ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
 
     print(p)
 }
