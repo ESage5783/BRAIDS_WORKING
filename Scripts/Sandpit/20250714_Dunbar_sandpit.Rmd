@@ -8,9 +8,8 @@ output: html_document
 
 ```{r (1) setup, include=FALSE }
 # Setting paths for working directory, retrieving data and saving figures and outputs - CHANGE TO SUIT YOU
-setwd("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING")
 scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/Sandpit"
-datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_unprocessed/DUN_2025/DUN_Sandpit_unprocessed"
+datpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data"
 savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Outputs/Sandpit_outputs/20250714_Dunbar_Sandpit"
 
 
@@ -37,213 +36,65 @@ library(devtools)
 # devtools::install_github('BritishTrustForOrnithology/MoveRakeR', build_vignettes = TRUE)
 ```
 
-```{r (3) obtain folder info, warning = FALSE, message = FALSE}
-# Retrieving folernames logger names, base station names from data path
-foldernames <- list.dirs(path = datpath, full.names = FALSE, recursive = TRUE)
-loggernames <- str_split(foldernames, 'Tag', simplify= TRUE)
-# Format of loggernames is weird, tidy and retrieve loggers vs basestations separately
-BSnames <- loggernames[c(2,3),1]
-loggernames <- unique(loggernames[c(7:57),2])
-directories <- list.dirs(path = datpath, full.names = TRUE, recursive = TRUE)
-directoriesTags <- directories[which(str_detect(directories, 'Tag') == TRUE)]
-directoriesTagsID <- str_sub(directoriesTags, -5, -1)
+
+```{R read in GPS accel pressure}
+# quick compare of GPS datasets
+GPS <- read.csv(paste(datpath, '/Tracks_processed/KITTI/DUN_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+GPS2 <- read.csv(paste(datpath, '/Tracks_processed/KITTI/DUN_KITTI_2025_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+
+GPS <- GPS[order(GPS$Tag_ID, GPS$Year, GPS$Month, GPS$Day, GPS$Hour, GPS$Second),]
+GPS2 <- GPS2[order(GPS2$Tag_ID, GPS2$Year, GPS2$Month, GPS2$Day, GPS2$Hour, GPS2$Second),]
+
+GPS$dup <- duplicated(GPS[c(1:7, 15)])
+GPS2$dup <- duplicated(GPS2[c(1:7, 15)])
+
+
+GPS$date_time <- as_datetime(paste(GPS$Year, '/' ,GPS$Month, '/', GPS$Day, '/', GPS$Hour, ':', GPS$Minute, ':', GPS$Second))
+GPS2$date_time <- as_datetime(paste(GPS2$Year, '/' ,GPS2$Month, '/', GPS2$Day, '/', GPS2$Hour, ':', GPS2$Minute, ':', GPS2$Second))
+
+
+GPSsumm <- GPS %>% group_by(Tag_ID) %>% summarise(nfixes = length(date_time), 
+                                                  start_time = min(date_time), 
+                                                  end_time = max(date_time),
+                                                  ndups = sum(dup), 
+                                                  minbat = min(Battery), 
+                                                  minlat = min(Lat),
+                                                  minlon = min(Long),
+                                                  maxlon = max(Long))
+
+
+GPSsumm2 <- GPS2 %>% group_by(Tag_ID) %>% summarise(nfixes = length(date_time), 
+                                                  start_time = min(date_time), 
+                                                  end_time = max(date_time),
+                                                  ndups = sum(dup), 
+                                                  minbat = min(Battery), 
+                                                  minlat = min(Lat),
+                                                  minlon = min(Long),
+                                                  maxlon = max(Long))
+
+# Continue with GPS 2 for now until check what Emily also took out - assume more duplicates! 
+GPS <- GPS2
+rm(GPS2)
 ```
 
-```{r (4) reading GPS data and getting in suitable format, warning = FALSE, message = FALSE}
-# Create empty dataframe
-dataout <- data.frame(matrix(nrow = 0, ncol = 14)) 
+```{R further basic filtering}
+# remove zeros
 
-# Select which directories to run through - here i've chosen all non basestation directories
-directoriesN <- directoriesTags
-foldersN <- foldernames
 
-# Run through every directory 
-for(n in 1:length(directoriesN)){
-  
-  #Identify folder with loggername
-  # folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
-  
-  # list all .pos file types in that folder
-  files = list.files(
-    path = directoriesN[n],
-    pattern = ".*pos$",
-    ignore.case = T,
-    full.names = T
-  )
-  
-  # Runs if there are .pos files in the folder
-  if(length(files) > 0) {
-    
-    # Read in all files in folder and bind into one dataframe
-    data = rbindlist(lapply(files, fread))
-    # Some of the data has an extra column - filling this in
-    if(length(data[1,])==14){
-      data$ProParam <- rep(NA, nrow(data))
-    }
-    # Name columns and list logger name as variable
-    colnames(data) <- c('Day','Month','Year','Hour','Minute','Second','Second_of_day','Satellites','Lat','Long','Altitude_GPS','Clock_offset','Accuracy','Battery','ProParam')
-    
-    filenameN <- str_split(directoriesN[n], 'Tag', simplify = TRUE)[2]
-    data$Tag_ID <- rep(filenameN, nrow(data))
-    
-    data$folder <- rep(foldersN[n], nrow(data))
-    #Create single data output for all 
-    dataout <- rbind(dataout, data)
-  }
-}
-
-GPS <- dataout
-
-# Remove random extra Parameter 
-# GPS <- GPS %>% dplyr::select(c(1:14,16))
-
-GPS$Site <- rep('DUN', nrow(GPS))
-GPS$Species <- rep('KITTI', nrow(GPS))
-
-GPS <- GPS[order(Tag_ID, Year, Month, Day, Hour, Second),]
-
-GPS$dup <- duplicated(GPS )
 ```
 
-```{R filtering}
 
-    # Make datetimes
-    data$date_time <- as_datetime(paste(data$Year, '/' ,data$Month, '/', data$Day, '/', data$Hour, ':', data$Minute, ':', data$Second))
+```{R play with moverakeR}
+devtools::install_github('BritishTrustForOrnithology/MoveRakeR', build_vignettes = TRUE)
 
-# remove now defunct individual date time objects
-GPS <- GPS %>% dplyr::select(7:18)
-
-# Summaries
-SummGPS <- GPS %>% group_by(tagID) %>% dplyr::summarise(n = length(latitude), start_time = min(date_time), end_time = max(date_time), ndays = length(unique(day(date_time))), nfolders = length(unique(folder)))
-# Remove bonkers latitude - lots of zeros
-GPSWeird <- GPS %>% filter(latitude < 30)
-GPSFilt  <- GPS %>% filter(latitude > 30)
-#Remove duplciate rows
-GPSFilt  <- subset(GPSFilt , select = -c(folder))
-GPSFilt$dup <- duplicated(GPSFilt )
-GPSFilt <- subset(GPSFilt , dup == FALSE)
-
-
-# So now we have one dataframe with all the GPS data in, from both loggers and basestations, where filename tells us which file they came from
 ```
 
-```{r (6) read in all pressure, warning = FALSE, message = FALSE}
-# Similar process to reading in GPS data
-# Opening logger pressure data:
-LGpress <- data.frame()
-# Run through every directory 
-directoriesN <- directoriesTags
-
-for(n in 1:length(directoriesN)){
-  
-  #Identify folder with loggername
-  # folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
-  
-  # list all .pos file types in that folder
-  files = list.files(
-    path = directoriesN[n],
-    pattern = ".*press.txt$",
-    ignore.case = T,
-    full.names = T
-  )
-  
-  if(length(files) > 0) {
-    
-    # Read in all files in folder and bind into one dataframe
-    dataN = rbindlist(lapply(files, fread))
-
-    colnames(dataN) <- c('year','month','day','hour','minute','second','temperature','pressure','height_calib')
-
-    # # Include logger name and filename as columns - doing this twice to match with basestation data which includes loggername whereas loggername doesnt, 
-    # # this means we can do a matching excersise to find duplciates later
-   filenameN <- str_split(directoriesN[n], 'Tag', simplify = TRUE)[2]
-    dataN$tagID <- rep(filenameN, nrow(dataN))
-    # 
-    LGpress <- rbind(LGpress, dataN)
-  }
-  
-}
-
-press <- LGpress
-press$date_time <- as_datetime(paste(press$year, '/' ,press$month, '/', press$day, '/', press$hour, ':', press$minute, ':', press$second))
-press <- press %>% sort_by(press$tagID, press$date_time)
-
-# Look for data rows that are duplciated across logger files
-press$dup <- duplicated(press[,1:10])
-pressFilt <- subset(press, dup == FALSE)
-
-# Remove highly anomolous pressures: 
-pressFilt <- subset(pressFilt, pressure < 9000)
-
-SummPress <- pressFilt %>% group_by(tagID) %>% summarise(
-  n = length(tagID),
-  mintime = min(date_time),
-  maxtime= max(date_time),
-  nrefs = length(unique(tagID))
-)
-``` 
-
-```{R read in accel data, warning = FALSE, message = FALSE}
-Accel <- data.frame()
-# Run through every directory 
-directoriesN <- directoriesTags
-
-for(n in 1:length(directoriesN)){
-  
-  #Identify folder with loggername
-  # folder <- paste(datpath, "Tag", loggernames[n], "/", sep = "") 
-  
-  # list all .pos file types in that folder
-  files = list.files(
-    path = directoriesN[n],
-    pattern = ".*Accel.txt$",
-    ignore.case = T,
-    full.names = T
-  )
-  
-  if(length(files) > 0) {
-    
-    # Read in all files in folder and bind into one dataframe
-    dataN = rbindlist(lapply(files, fread))
-
-    colnames(dataN) <- c('year','month','day','hour','minute','second','xacc','yacc','zacc', '3Dacc')
-    
-    
-
-    # # Include logger name and filename as columns - doing this twice to match with basestation data which includes loggername whereas loggername doesnt, 
-    # # this means we can do a matching excersise to find duplciates later
-   filenameN <- str_split(directoriesN[n], 'Tag', simplify = TRUE)[2]
-    dataN$tagID <- rep(filenameN, nrow(dataN))
-    # 
-    Accel <- rbind(Accel, dataN)
-  }
-  
-}
-
-Accel$date_time <- as_datetime(paste(Accel$year, '/' ,Accel$month, '/', Accel$day, '/', Accel$hour, ':', Accel$minute, ':', Accel$second))
-
-# Look for data rows that are duplciated across logger files
-Accel$dup <- duplicated(Accel[,1:12])
-Accel <- subset(Accel, dup == FALSE)
-
-# Remove data from prior to attachment
-Accel <- filter(Accel, month(date_time) > 6)
-
-SummAccel <- Accel %>% group_by(tagID) %>% summarise(
-  n = length(tagID),
-  mintime = min(date_time),
-  maxtime= max(date_time),
-  nrefs = length(unique(tagID))
-)
-```
-
-PLOTS
 ```{r just making exploratory maps}
 ifelse(!dir.exists(paste(savepath, 'Leaflet_maps', sep = '')), dir.create(paste(savepath, '/Leaflet_maps', sep = '')), "Folder exists already")
 
 
 # Lef map of all
-lefplot <- GPSFilt
+lefplot <- GPS
 # lefplot <- subset(lefplot, Logger == unique(lefplot$Logger)[16])
 class_names <- unique(lefplot$tagID)
 
@@ -270,7 +121,7 @@ lef <- leaflet(lefplot) %>%
 
 
 lef
-saveWidget(lef, file=paste(savepath, 'Leaflet_maps/TEST',".html", sep = ''))
+saveWidget(lef, file=paste(savepath, 'Leaflet_maps/TEST2',".html", sep = ''))
 
   
   
@@ -312,12 +163,12 @@ for(i in unique(GPSFilt$tagID)){
 
 # Save lef map per individual with time slider
 count <- 1
-for(i in unique(GPSFilt$tagID)){
-  lefplot <- subset(GPSFilt, tagID == i)
+for(i in unique(GPS$Tag_ID)){
+  lefplot <- subset(GPS, Tag_ID == i)
   
   pal <-  c("green", "darkgreen","blue","navy","red","deeppink4","purple","orange","magenta","yellow")
   
-data_points <- sp::SpatialPoints(cbind(lefplot$longitude,lefplot$latitude),CRS("+proj=longlat +datum=WGS84"))
+data_points <- sp::SpatialPoints(cbind(lefplot$Long,lefplot$Lat),CRS("+proj=longlat +datum=WGS84"))
 
 data_lines <- sp_line <- as(data_points,"SpatialLines")
 
@@ -328,13 +179,13 @@ data$time <- as.POSIXct(lefplot$date_time)
 lef <- leaflet() %>%
   addTiles() %>%
   addPolylines(data = data_lines, fillOpacity = 0.4, color = "gray", weight = 2) %>%
-  addCircles(lng = lefplot$longitude, lat = lefplot$latitude, color = pal[count], fillColor = pal[count], popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS),radius = 1.5, fillOpacity = 0.2, weight = 1, stroke = "FALSE") %>%
+  addCircles(lng = lefplot$Long, lat = lefplot$Lat, color = pal[count], fillColor = pal[count], popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$TagID, " GPS alt =", lefplot$Altitude_GPS),radius = 1.5, fillOpacity = 0.2, weight = 1, stroke = "FALSE") %>%
   addTimeslider(data = data, fillOpacity = 0.2, radius  = 5, weight = 1, color = pal[count], fillColor = pal[count],
-                popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS),
+                popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$TagID, " GPS alt =", lefplot$Altitude_GPS),
                 options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE))
   
   lef
-  saveWidget(lef, file=paste(savepath, 'Leaflet_maps/TimeSlider_lefmap_',lefplot$tagID[1],".html", sep = ''))
+  saveWidget(lef, file=paste(savepath, '/Leaflet_maps/2TimeSlider_lefmap_',lefplot$Tag_ID[1],".html", sep = ''))
   
   count <- count +1
 }

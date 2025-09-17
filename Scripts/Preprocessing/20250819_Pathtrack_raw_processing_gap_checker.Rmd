@@ -1,5 +1,5 @@
 ---
-title: "20250819_Pathtrack_raw_processing_gap_checker"
+title: "20250819_raw_processing_gap_checker"
 author: "Elspeth Sage"
 date: "2025-08-19"
 output:
@@ -21,13 +21,15 @@ savepath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTIO
 ```{r (2) libraries, warning = FALSE, message = FALSE}
 library(lubridate)
 library(dplyr)
+library(sp)
+library(sf)
 library(purrr)
 library(ggplot2)
 library(cowplot)
 ```
 
 ```{r read in data}
-GPS <- read.csv(paste(datpath, 'FHH_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+GPS <- read.csv(paste(datpath, 'SAH_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
 
 ```
 
@@ -74,4 +76,15 @@ p <- plot_grid(p1, p2, labels = c('A', 'B'), label_size = 12)
     print(p)
 }
                        
+```
+
+
+```{R battery level per plot}
+p <- ggplot()+
+  geom_line(data = GPS, aes(x = date_time, y = Battery, group = Tag_ID, colour = as.factor(Tag_ID)), alpha = 0.5)+
+  facet_wrap(~Plot)
+
+title <- paste(savepath,'/Figures/2025_SAH_plot_battery.png', sep = '')
+ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
+
 ```

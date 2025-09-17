@@ -8,14 +8,11 @@ output:
 ---
 
 ```{r (2) libraries, warning = FALSE, message = FALSE}
-library(lubridate)
-library(dplyr)
-library(sp)
-library(sf)
-library(purrr)
-library(stringr)
-library(data.table)
-library(tidytable)
+library(lubridate) #For working with date_time objects e.g. as_datetime function
+library(dplyr) #For select functions an tidy coding 
+library(stringr) #For str_split function
+library(data.table) #For fread function
+library(tidytable) #For map_df function
 ```
 
 ```{r (1) Settings}
@@ -31,30 +28,34 @@ YEAR <- 2025
 ```
 
 ```{R set paths}
-
+# Scriptpath for location of script
 scriptpath <- "C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Scripts/Preprocessing/"
+# Datpath for location of folder containing unprocessed tracks
 datpath <- paste("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_unprocessed/", YEAR, "_", SPECIES, "_", SITE, "/", sep = '')
+# Meta path for location of metadata file
 Metapath <- paste(datpath, SITE, "_", YEAR, "_Metadata.csv", sep = '')
-# Savepath for where you want processed tracks to live
+# Savepath for location to save processed tracks to
 savepath <-  paste("C:/Users/ElspethSage/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/Documents/BRAIDS/WORKING/Data/Tracks_processed/", SPECIES, "/", sep = '')
+
 
 ```
 
 
 
 ```{r (3) obtain folder info, warning = FALSE, message = FALSE}
-# Could need changing depending on where data lives within dat path
+# Could need changing depending on where data lives within dat path and name of folder
 GPSpath <- paste(datpath, 'Final .pos', sep = '')
 ```
 
 
 ```{R read directory, warning = FALSE, message = FALSE}
-  files = list.files(
-    path = GPSpath,
-    pattern = ".*pos$",
-    ignore.case = T,
-    full.names = T
-  )
+
+files = list.files(
+  path = GPSpath,
+  pattern = ".*pos$",
+  ignore.case = T,
+  full.names = T
+)
 
 Tag_IDs <- str_split(files, 'Tag', simplify = TRUE)[,2]
 Tag_IDs <- str_split(Tag_IDs, '.pos', simplify = TRUE)[,1]
@@ -73,14 +74,13 @@ GPS$Species <- rep(SPECIES, nrow(GPS))
 ```
 
 ```{R additional pathtrackdata - DUNBAR 2025 ONLY}
-
+# Appending additional Pathtrack data for Dunbar 2025 - replacing one individual data with Pathtrack data that fills in gaps
 GPS <- subset(GPS, Tag_ID != 35894)
 GPS$Tag_ID[which(GPS$Tag_ID == '35894-COMBINED')] <- rep(35894, length(GPS$Tag_ID[which(GPS$Tag_ID == '35894-COMBINED')]))
 
 ```
 
 ```{R order data}
-
 GPS <- GPS[order(GPS$Tag_ID, GPS$Year, GPS$Month, GPS$Day, GPS$Hour, GPS$Second),]
 ```
 
@@ -98,10 +98,11 @@ MetaData <- subset(MetaData, is.na(GPS.tag.ID)==0)
 ```
 
 ```{R Cut GPS data by start times}
+# Convert date and time columns to a date time object
 GPS$date_time <- as_datetime(paste(GPS$Year, '/' ,GPS$Month, '/', GPS$Day, '/', GPS$Hour, ':', GPS$Minute, ':', GPS$Second))
 
+# Cycle through each individual and cut data by release time as specified in metadata
 GPS_out<- c()
-
 for(i in 1:length(unique(GPS$Tag_ID))){
   MetaData_i <- MetaData[i,]
   GPS_i <- subset(GPS, Tag_ID == MetaData_i$GPS.tag.ID)
@@ -109,10 +110,9 @@ for(i in 1:length(unique(GPS$Tag_ID))){
   GPS_cut$Plot <- rep(MetaData_i$Plot, nrow(GPS_cut))
   
   GPS_out <- rbind(GPS_out, GPS_cut)
-
 }
 
-# Remove date_time since not useed in previous files - can be made from data
+# Remove date_time since not used in previous files - can be made from data
 GPS_out<- subset(GPS_out, select = -c(date_time))
 
 # Change name orders to match previous
@@ -123,7 +123,7 @@ GPS_out <- dplyr::select(GPS_out, all_of(name_order))
 ```{R write to csv}
 # Save raw data 
 write.csv(GPS_out, file = paste(savepath, SITE, '_', YEAR, '_', SPECIES,'_Tracks.csv', sep = ''), row.names=FALSE)
-
 ```
+
 
 
