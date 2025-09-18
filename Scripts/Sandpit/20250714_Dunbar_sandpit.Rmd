@@ -2,7 +2,9 @@
 title: "20250714_Dunbar_Explore"
 author: "Elspeth Sage"
 date: "2025-07-14"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 
@@ -31,17 +33,27 @@ library(stringr)
 library(data.table)
 library(ggplot2)
 library(devtools)
+library(ctmm)
+
+library(dygraphs)
+library(xts)
 
 # Don't have to run devtools but was planning to have a play with it!
-# devtools::install_github('BritishTrustForOrnithology/MoveRakeR', build_vignettes = TRUE)
+devtools::install_github('BritishTrustForOrnithology/MoveRakeR', build_vignettes = TRUE)
+library(MoveRakeR)
 ```
 
 
-```{R read in GPS accel pressure}
+```{R read in GPS accel pressure, warning = FALSE, message = FALSE}
 # quick compare of GPS datasets
 GPS <- read.csv(paste(datpath, '/Tracks_processed/KITTI/DUN_2025_KITTI_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
 GPS2 <- read.csv(paste(datpath, '/Tracks_processed/KITTI/DUN_KITTI_2025_Tracks.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
 
+Accel <- read.csv(paste(datpath, '/Accelerometry_processed/KITTI/DUN_KITTI_2025_Accel.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+Press <- read.csv(paste(datpath, '/Pressure_processed/KITTI/DUN_KITTI_2025_Pressure.csv', sep = ''), header = TRUE, sep = ",", stringsAsFactors=FALSE, row.names = NULL)
+```
+
+```{R compare two DUN datasets, warning = FALSE, message = FALSE}
 GPS <- GPS[order(GPS$Tag_ID, GPS$Year, GPS$Month, GPS$Day, GPS$Hour, GPS$Second),]
 GPS2 <- GPS2[order(GPS2$Tag_ID, GPS2$Year, GPS2$Month, GPS2$Day, GPS2$Hour, GPS2$Second),]
 
@@ -77,31 +89,44 @@ GPS <- GPS2
 rm(GPS2)
 ```
 
-```{R further basic filtering}
+```{R further basic filtering, warning = FALSE, message = FALSE}
+
+# MoverakeR names
+GPS$TagID <- GPS$Tag_ID
+GPS$DateTime <- GPS$date_time
+GPS$longitude <- GPS$Long
+GPS$latitude <- GPS$Lat
+
 # remove zeros
-
-
 ```
 
 
-```{R play with moverakeR}
-devtools::install_github('BritishTrustForOrnithology/MoveRakeR', build_vignettes = TRUE)
+```{R moverakeR play, warning = FALSE, message = FALSE}
+indata_ctmm <- ctmm::as.telemetry(GPS)
+OUT <- ctmm::outlie(indata_ctmm)
+plot(OUT,units=FALSE)
+
+GPS$satellites_used <- GPS$Satellites
+GPS<- clean_GPS(GPS)
+
+plot_leaflet(GPS)
 
 ```
 
-```{r just making exploratory maps}
+```{r make individual and collective leaflet maps, warning = FALSE, message = FALSE}
 ifelse(!dir.exists(paste(savepath, 'Leaflet_maps', sep = '')), dir.create(paste(savepath, '/Leaflet_maps', sep = '')), "Folder exists already")
 
+GPS <- GPS[order(GPS$TagID, GPS$date_time),]
 
 # Lef map of all
 lefplot <- GPS
 # lefplot <- subset(lefplot, Logger == unique(lefplot$Logger)[16])
-class_names <- unique(lefplot$tagID)
+class_names <- unique(lefplot$TagID)
 
 pal2 <- colorFactor(palette = c("green", "white","blue","pink","red","grey","purple","orange","magenta","yellow", "navy","black","violet"),domain = class_names)
 
-split_data = lapply(unique(lefplot$tagID), function(x) {
-  df = as.matrix(lefplot[lefplot$tagID == x, c("longitude", "latitude")])
+split_data = lapply(unique(lefplot$TagID), function(x) {
+  df = as.matrix(lefplot[lefplot$TagID == x, c("longitude", "latitude")])
   lns = Lines(Line(df), ID = x)
   return(lns)
 })
@@ -117,57 +142,48 @@ data_lines = SpatialLines(split_data)
 lef <- leaflet(lefplot) %>%
   addTiles() %>%
   addPolylines(data = data_lines, fillOpacity = 0.6, color = "gray") %>%
-  addCircles(data = lefplot, lat = ~ latitude, lng = ~ longitude, color = ~pal2(tagID), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID))
+  addCircles(data = lefplot, lat = ~ latitude, lng = ~ longitude, color = ~pal2(TagID), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$TagID))
 
 
 lef
-saveWidget(lef, file=paste(savepath, 'Leaflet_maps/TEST2',".html", sep = ''))
+saveWidget(lef, file=paste(savepath, '/Leaflet_maps/DUN_ALL_MoveRakeRFilt',".html", sep = ''))
 
-  
-  
-# Save lef map per individual
-for(i in unique(GPSFilt$tagID)){
-  lefplot <- subset(GPSFilt, tagID == i)
-  
-  # lefplot <- subset(lefplot, Logger == unique(lefplot$Logger)[16])
-  class_names <- unique(lefplot$tagID)
-  
-  pal2 <- colorFactor(palette = c("green", "white","blue","pink","red","grey","purple","orange","magenta","yellow"),domain = class_names)
-  
-  # split_data = lapply(unique(lefplot$tagID), function(x) {
-  #   df = as.matrix(lefplot[lefplot$tagID == x, c("longitude", "latitude")])
-  #   lns = Lines(Line(df), ID = x)
-  #   return(lns)
-  # })
-  # 
-  # split_data$time <- lefplot$date_time
-  # data_lines = SpatialLines(split_data)
-  
-  
-  data <- sf::st_as_sf(lefplot, coords = c("latitude", "longitude"), crs = 28992)
-  data <- st_cast(data, "POINT")
-  data$time <- as.POSIXct(
-  seq.POSIXt(Sys.time() - 1000, Sys.time(), length.out = nrow(data))
-  )
 
-  
-  lef <- leaflet(lefplot) %>%
-    addTiles() %>%
-    addPolylines(data = data, fillOpacity = 0.6, color = "gray") %>%
-    addCircles(data = lefplot, lat = ~ latitude, lng = ~ longitude, color = ~pal2(tagID), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS)) %>%
-      addTimeslider(data = data,options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE))
-  
-  lef
-  saveWidget(lef, file=paste(savepath, 'Leaflet_maps/lefmap_',lefplot$filename[1],".html", sep = ''))
-}
+
+# # Save lef map per individual
+# for(i in unique(GPSFilt$tagID)){
+#   lefplot <- subset(GPSFilt, tagID == i)
+# 
+#   # lefplot <- subset(lefplot, Logger == unique(lefplot$Logger)[16])
+#   class_names <- unique(lefplot$tagID)
+# 
+#   pal2 <- colorFactor(palette = c("green", "white","blue","pink","red","grey","purple","orange","magenta","yellow"),domain = class_names)
+# 
+# 
+#   data <- sf::st_as_sf(lefplot, coords = c("latitude", "longitude"), crs = 28992)
+#   data <- st_cast(data, "POINT")
+#   data$time <- as.POSIXct(
+#   seq.POSIXt(Sys.time() - 1000, Sys.time(), length.out = nrow(data))
+#   )
+# 
+# 
+#   lef <- leaflet(lefplot) %>%
+#     addTiles() %>%
+#     addPolylines(data = data, fillOpacity = 0.6, color = "gray") %>%
+#     addCircles(data = lefplot, lat = ~ latitude, lng = ~ longitude, color = ~pal2(tagID), fillOpacity = 0.6, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS)) %>%
+#       addTimeslider(data = data,options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE))
+# 
+#   lef
+#   saveWidget(lef, file=paste(savepath, 'Leaflet_maps/lefmap_',lefplot$filename[1],".html", sep = ''))
+# }
 
 # Save lef map per individual with time slider
 count <- 1
-for(i in unique(GPS$Tag_ID)){
-  lefplot <- subset(GPS, Tag_ID == i)
-  
-  pal <-  c("green", "darkgreen","blue","navy","red","deeppink4","purple","orange","magenta","yellow")
-  
+for(i in unique(GPS$TagID)){
+  lefplot <- subset(GPS, TagID == i)
+
+  pal <-  c("green", "darkgreen","blue","navy","red","deeppink4","purple","orange","magenta","violet")
+
 data_points <- sp::SpatialPoints(cbind(lefplot$Long,lefplot$Lat),CRS("+proj=longlat +datum=WGS84"))
 
 data_lines <- sp_line <- as(data_points,"SpatialLines")
@@ -183,37 +199,121 @@ lef <- leaflet() %>%
   addTimeslider(data = data, fillOpacity = 0.2, radius  = 5, weight = 1, color = pal[count], fillColor = pal[count],
                 popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$TagID, " GPS alt =", lefplot$Altitude_GPS),
                 options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE))
-  
+
   lef
-  saveWidget(lef, file=paste(savepath, '/Leaflet_maps/2TimeSlider_lefmap_',lefplot$Tag_ID[1],".html", sep = ''))
-  
+  saveWidget(lef, file=paste(savepath, '/Leaflet_maps/TimeSlider_lefmap_',lefplot$Tag_ID[1],".html", sep = ''))
+
   count <- count +1
 }
-``` 
+```
+
+```{R Accel & press time gaps, warning = FALSE, message = FALSE}
+
+Accel$date_time <- as_datetime(paste(Accel$Year, '/' ,Accel$Month, '/', Accel$Day, '/', Accel$Hour, ':', Accel$Minute, ':', Accel$Second))
+
+Accel_out <- c()
+for(i in 1:length(unique(Accel$TagID))){
+  Accel_i <- subset(Accel, TagID %in% unique(Accel$TagID)[i])
+  Accel_i <- Accel_i[order(Accel_i$date_time),]
+  Accel_i$timeinterval_f <- c(NA,difftime(Accel_i$date_time[-1], Accel_i$date_time[-length(Accel_i$date_time)], units = "secs"))
+
+  Accel_out <- rbind(Accel_out, Accel_i)
+}
+
+
+Accelsumm <- Accel_out %>% dplyr::group_by(TagID) %>% dplyr::summarise(nfixes = length(date_time),
+                                                  start_time = min(date_time),
+                                                  end_time = max(date_time),
+                                                   minInterval = min(timeinterval_f, na.rm = TRUE), maxInterval = max(timeinterval_f, na.rm = TRUE), medianInterval = median(timeinterval_f, na.rm = TRUE))
+
+Press$date_time <- as_datetime(paste(Press$Year, '/' ,Press$Month, '/', Press$Day, '/', Press$Hour, ':', Press$Minute, ':', Press$Second))
+
+Press_out <- c()
+for(i in 1:length(unique(Press$TagID))){
+  Press_i <- subset(Press, TagID %in% unique(Press$TagID)[i])
+  Press_i <- Press_i[order(Press_i$date_time),]
+  Press_i$timeinterval_f <- c(NA,difftime(Press_i$date_time[-1], Press_i$date_time[-length(Press_i$date_time)], units = "secs"))
+
+  Press_out <- rbind(Press_out, Press_i)
+}
+
+
+Pressumm <- Press_out %>% dplyr::group_by(TagID) %>% dplyr::summarise(nfixes = length(date_time),
+                                                  start_time = min(date_time),
+                                                  end_time = max(date_time),
+                                                   minInterval = min(timeinterval_f, na.rm = TRUE), maxInterval = max(timeinterval_f, na.rm = TRUE), medianInterval = median(timeinterval_f, na.rm = TRUE))
+
+Accel <- Accel_out
+rm(Accel_out)
+
+Press <- Press_out
+rm(Press_out)
+```
+
+```{R play with one individual, warning = FALSE, message = FALSE}
+IndBack <- subset(Accel, TagID == 35844)
+
+temp <- subset(Accel, TagID == 35844) %>% dplyr::select(Zaccel, Xaccel, Yaccel, date_time)
+xtsdatAcc <- xts(temp, order.by = temp$date_time, tz="UTC")
+
+dyAcc <-dygraph(xtsdatAcc, main = "Acceleration",group = "tagID 35854") %>%
+  dyAxis("y", label = "Acceleration (g)", valueRange = c(-4.2, 4.2)) %>%
+  dyHighlight(highlightSeriesOpts = list(strokeWidth = 3)) %>%
+  dyRangeSelector() %>%
+  dyOptions(axisLineWidth = 0.1, strokePattern = "dashed")
+
+dyAcc
+
+
+
+IndTail <- subset(Accel, TagID == 35903)
+
+temp <- subset(Accel, TagID == 35903) %>% dplyr::select(Zaccel, Xaccel, Yaccel, date_time)
+xtsdatAcc <- xts(temp, order.by = temp$date_time, tz="UTC")
+
+dyAcc <-dygraph(xtsdatAcc, main = "Acceleration",group = "tagID 35854") %>%
+  dyAxis("y", label = "Acceleration (g)", valueRange = c(-4.2, 4.2)) %>%
+  dyHighlight(highlightSeriesOpts = list(strokeWidth = 3)) %>%
+  dyRangeSelector() %>%
+  dyOptions(axisLineWidth = 0.1, strokePattern = "dashed")
+
+dyAcc
+
+ggplot(data = IndBack)+
+  geom_path(aes(x = date_time, y = X3Daccel), alpha = 0.2)+
+  geom_point(aes(x = date_time, y = X3Daccel), alpha = 0.2)+
+  scale_x_datetime(breaks = "hours")
+
+```
+
+
+
+
 
 ```{R fun plotting pressures}
 # Loop through loggers and their unique days to generate a pressure time series per logger per day
-pressFilt$day <- day(pressFilt$date_time)
+Press$day <- day(Press$date_time)
 
-Ns <- unique(pressFilt$tagID)
+Ns <- unique(Press$TagID)
 
 for(i in Ns){
-  dataN <- subset(pressFilt, tagID == i)
+  dataN <- subset(Press, TagID == i)
 
     p <- ggplot(dataN)+
-    geom_point(aes(x = date_time, y = pressure), alpha = 0.5, stroke = NA)+
+    geom_point(aes(x = date_time, y = Pressure), alpha = 0.5, stroke = NA)+
       theme_bw(base_size = 10)+
       labs(title = (paste('Flight trial, ', date(dataN$date_time[1]), ' tagID: ', i, sep = '')))+
+      ylim(995, 1050)+
       xlab('date_time')
       ylab('pressure')
-    
-    title <- paste(savepath,'Figures/Pressurefigures/Dunbar_', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.png', sep = '') 
+
+    title <- paste(savepath,'/Figures/Pressurefigures/2Dunbar_', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.png', sep = '')
     ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
   }
 
 # plot strange tag day bday
-press35853_1 <- filter(pressFilt, tagID == 35853 & pressure < 3000)
-press35853_2 <- filter(pressFilt, tagID == 35853 & pressure >= 3000)
+press35853_1 <- filter(Press, tagID == 35853 & pressure < 3000)
+press35853_2 <- filter(Press, tagID == 35853 & pressure >= 3000)
 
 p1 <- ggplot(press35853_1)+
   geom_point(aes(x = date_time, y = pressure), alpha = 0.5, stroke = NA)+
@@ -222,7 +322,7 @@ p1 <- ggplot(press35853_1)+
   xlab('date_time')
 ylab('pressure')
 
-title <- paste(savepath,'Figures/Pressurefigures/Dunbar_', date(press35853_1$date_time[1]),'_', date(press35853_1$date_time[nrow(press35853_1)]),'_logger_35853i.png', sep = '') 
+title <- paste(savepath,'Figures/Pressurefigures/Dunbar_', date(press35853_1$date_time[1]),'_', date(press35853_1$date_time[nrow(press35853_1)]),'_logger_35853i.png', sep = '')
 ggsave(title,plot = p1, width = 15, height = 6, dpi = 150, units = "in", device='png')
 
 p2 <- ggplot(press35853_2)+
@@ -232,31 +332,67 @@ p2 <- ggplot(press35853_2)+
   xlab('date_time')
 ylab('pressure')
 
-title <- paste(savepath,'Figures/Pressurefigures/Dunbar_', date(press35853_2$date_time[1]),'_', date(press35853_2$date_time[nrow(press35853_2)]),'_logger_35853ii.png', sep = '') 
+title <- paste(savepath,'Figures/Pressurefigures/Dunbar_', date(press35853_2$date_time[1]),'_', date(press35853_2$date_time[nrow(press35853_2)]),'_logger_35853ii.png', sep = '')
 ggsave(title,plot = p2, width = 15, height = 6, dpi = 150, units = "in", device='png')
 
-``` 
+```
 
 ```{R fun plotting Accelerometer}
 # Loop through loggers and their unique days to generate a pressure time series per logger per day
 Accel$day <- day(Accel$date_time)
 
-Ns <- unique(Accel$tagID)
+Ns <- unique(Accel$TagID)
 
 for(i in Ns){
-  dataN <- subset(Accel, tagID == i)
-
-    p <- ggplot(dataN)+
-    geom_point(aes(x = date_time, y = zacc, color = "z accel"), alpha = 0.5, stroke = NA, fill = 'black')+
-      geom_point(aes(x = date_time, y = yacc, color = "y accel"), alpha = 0.5, stroke = NA, fill = 'red')+
-      geom_point(aes(x = date_time, y = xacc, color = "x accel"), alpha = 0.5, stroke = NA, fill = 'blue')+
-      theme_bw(base_size = 10)+
-      labs(title = (paste('Flight trial, ', date(dataN$date_time[1]), ' tagID: ', i, sep = '')))+
-      xlab('date_time')
-      ylab('Acceleration [g]')
+  dataN <- subset(Accel, TagID == i)
+  
+  p1 <- ggplot(dataN)+
+    geom_point(aes(x = date_time, y = Zaccel, color = "z accel"), alpha = 0.1, stroke = NA, fill = 'black')+
+    geom_point(aes(x = date_time, y = Yaccel, color = "y accel"), alpha = 0.1, stroke = NA, fill = 'red')+
+    geom_point(aes(x = date_time, y = Xaccel, color = "x accel"), alpha = 0.1, stroke = NA, fill = 'blue')+
+    theme_bw(base_size = 10)+
+    labs(title = (paste('Dunbar, ', date(dataN$date_time[1]), ':', date(dataN$date_time[nrow(dataN)]), ' TagID: ', i, sep = '')))+
+    # scale_x_datetime(date_minor_breaks = "1 hour", date_breaks = "1 hour",date_labels = "%m/%d %H:%M") +
+    # theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 0.5))+
+      theme(text = element_text(size = 19), axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+    xlab('')+
+    ylab('Acceleration [m/s]')
+  
+    p2 <- ggplot(dataN)+
+    geom_point(aes(x = date_time, y = X3Daccel), alpha = 0.1, stroke = NA, color = "black", fill = 'black')+
+    theme_bw(base_size = 10)+
+    # labs(title = (paste('Flight trial, ', date(dataN$date_time[1]), ' TagID: ', i, sep = '')))+
+    scale_x_datetime(breaks = "hours")+
+    scale_x_datetime(date_minor_breaks = "1 hour", date_breaks = "1 hour",date_labels = "%m/%d %H:%M") +
+    theme(text = element_text(size = 19), axis.text.x = element_text(angle = 45, hjust = 1, vjust = 0.5))+
+    xlab('')+
+    ylab('X3Daccel [m/s]')
+  
+    p <- plot_grid(p1,p2, ncol = 1, align = "v")
     
-    title <- paste(savepath,'Figures/Accelerometerfigures/Dunbar_', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.png', sep = '') 
-    ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
+  title <- paste(savepath,'/Figures/Accelerometerfigures/Dunbar_2025_', i, '.png', sep = '')
+  ggsave(title,plot = p,width = 20, height = 15, dpi = 150, units = "in", device='png')
+}
+
+
+
+for(i in Ns){
+  dataN <- subset(Accel, TagID == i)
+  
+  p <- ggplot(dataN)+
+    geom_point(aes(x = date_time, y = X3Daccel), alpha = 0.1, stroke = NA, color = "black", fill = 'black')+
+    theme_bw(base_size = 10)+
+    labs(title = (paste('Flight trial, ', date(dataN$date_time[1]), ' TagID: ', i, sep = '')))+
+    scale_x_datetime(breaks = "hours")+
+    scale_x_datetime(date_minor_breaks = "1 hour", date_breaks = "1 hour",date_labels = "%m/%d %H:%M") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 0.5))+
+    xlab('date_time')+
+    ylab('X3Daccel [m/s]')
+  
+  title <- paste(savepath,'/Figures/Accelerometerfigures/Dunbar_2025_X3Daccel_', i, '.png', sep = '')
+  ggsave(title,plot = p,width = 15, height = 6, dpi = 150, units = "in", device='png')
 }
 ```
 
@@ -276,9 +412,9 @@ ggplot(GPS)+
 ggplot(GPSFilt)+
   geom_point(data = GPSFilt, aes(x = date_time, y = latitude))+
   facet_wrap(~tagID, scales = "free")
-  
 
-``` 
+
+```
 
 
 ```{R dygraphs!}
@@ -287,26 +423,23 @@ library(dygraphs)
 library(xts)
 
 tempGPS <- subset(GPSFilt, tagID == 35903)
-tempp <- subset(pressFilt, tagID == 35903) %>% dplyr::select(pressure, date_time)
-temp <- subset(Accel, tagID == 35903) %>% dplyr::select(zacc, xacc, yacc, date_time)
+tempp <- subset(Press, tagID == 35903) %>% dplyr::select(pressure, date_time)
+temp <- subset(Accel, TagID == 35844) %>% dplyr::select(Zaccel, Xaccel, Yaccel, date_time)
 xtsdatAcc <- xts(temp, order.by = temp$date_time, tz="UTC")
 xtsdatPr <- xts(tempp, order.by = tempp$date_time, tz="UTC")
 
 
-startrange <- as_date(min(dydat$date_time))
-endrange <- max(dydat$date_time)
-
-dygraph(Accel$zacc, main = "test") %>% 
+dygraph(Accel$zacc, main = "test") %>%
   dyRangeSelector(dateWindow = c(min(Accel), "1960-01-01"))
 
 
-dyAcc <-dygraph(xtsdatAcc, main = "Acceleration",group = "tagID 35903") %>% 
+dyAcc <-dygraph(xtsdatAcc, main = "Acceleration",group = "tagID 35854") %>%
   dyAxis("y", label = "Acceleration (g)", valueRange = c(-4.2, 4.2)) %>%
   dyHighlight(highlightSeriesOpts = list(strokeWidth = 3)) %>%
   dyRangeSelector() %>%
   dyOptions(axisLineWidth = 0.1, strokePattern = "dashed")
 
-dygraph(xtsdatPr, main = "Pressure", group = "tagID 35903") %>% 
+dygraph(xtsdatPr, main = "Pressure", group = "tagID 35903") %>%
   dyAxis("y", label = "Pressure (mBar)",) %>%
   dyHighlight(highlightSeriesOpts = list(strokeWidth = 2)) %>%
   dyRangeSelector() %>%
@@ -323,15 +456,15 @@ for(i in Ns){
 
   temp <- subset(dataN, tagID == i) %>% dplyr::select(zacc, xacc, yacc, date_time)
   xtsdatAcc <- xts(temp, order.by = temp$date_time, tz="UTC")
-  
-  dyAcc <-dygraph(xtsdatAcc, main = paste("tag ID", dataN$tagID[1], sep = " "), group = paste("tag ID", dataN$tagID[1], sep = " ")) %>% 
+
+  dyAcc <-dygraph(xtsdatAcc, main = paste("tag ID", dataN$tagID[1], sep = " "), group = paste("tag ID", dataN$tagID[1], sep = " ")) %>%
   dyAxis("y", label = "Acceleration (g)", valueRange = c(-4.2, 4.2)) %>%
   dyHighlight(highlightSeriesOpts = list(strokeWidth = 3)) %>%
   dyRangeSelector() %>%
   dyOptions(axisLineWidth = 0.1, strokePattern = "dashed")
-    
-    title <- paste(savepath,'Figures/Accelerometerfigures/Dy_Dunbar_Accel', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.png', sep = '') 
-    
+
+    title <- paste(savepath,'Figures/Accelerometerfigures/Dy_Dunbar_Accel', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.png', sep = '')
+
     saveWidget(dyAcc, file=paste(savepath,'Figures/Accelerometerfigures/Dy_Dunbar_Accel_', date(dataN$date_time[1]),'_', date(dataN$date_time[nrow(dataN)]),'_logger_', i, '.html', sep = ''))
 }
 
@@ -354,5 +487,5 @@ lef <- leaflet() %>%
   addCircles(lng = tempGPS$longitude, lat = tempGPS$latitude, popup = paste(" Timestamp = ",lefplot$date_time," individual =", lefplot$tagID, " GPS alt =", lefplot$altitude_GPS),radius = 0.2, fillOpacity = 0.1, weight = 1, stroke = "FALSE") %>%
   addTimeslider(data = data,fillOpacity = 0.2, radius  = 5, weight = 1, options = timesliderOptions(position = "topright",timeAttribute = "time",range = TRUE,),fillOpacity = 0.2, radius  = 5, weight = 1)
 
-``` 
+```
 
